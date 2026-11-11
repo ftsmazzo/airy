@@ -10,12 +10,13 @@ export type ClapConfig = {
   cooldownMs: number;
 };
 
+/** Mais estrito: evita loop acorda/dorme com mic sensível (Mac) / ruído. */
 export const DEFAULT_CLAP_CONFIG: ClapConfig = {
-  peakRatio: 3.2,
-  minPeak: 0.12,
-  minGapMs: 120,
-  maxGapMs: 900,
-  cooldownMs: 1800,
+  peakRatio: 4.8,
+  minPeak: 0.2,
+  minGapMs: 160,
+  maxGapMs: 650,
+  cooldownMs: 4000,
 };
 
 export type ClapDetectorState = {

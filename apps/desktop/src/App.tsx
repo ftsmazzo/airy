@@ -37,6 +37,8 @@ export function App() {
   const speakingRef = useRef(false);
   const settingsRef = useRef<AirySettingsView | null>(null);
   const enrollModeRef = useRef(false);
+  /** Bloqueia palmas por um tempo após dormir — evita oscilação acorda/dorme. */
+  const clapArmedAtRef = useRef(0);
   const startListeningRef = useRef<() => Promise<void>>(async () => {});
   const stopListeningRef = useRef<(opts?: { discard?: boolean; reason?: string }) => void>(
     () => {},
@@ -54,6 +56,7 @@ export function App() {
     setOrb("idle");
     setLevel(0);
     setCaption(msg);
+    clapArmedAtRef.current = performance.now() + 2800;
   }, []);
 
   useEffect(() => {
@@ -203,16 +206,10 @@ export function App() {
   const startListening = useCallback(async () => {
     if (!ready) return;
     if (sessionRef.current === "busy") return;
-    if (sessionRef.current === "listening") {
-      stopListening({ discard: true, reason: "Parei. Dormindo." });
-      goDormant(DORMANT_CAPTION);
-      return;
-    }
-    if (speakingRef.current) {
-      stopSpeech();
-      goDormant(DORMANT_CAPTION);
-      return;
-    }
+    // Não alterna escuta→dormir aqui (isso gerava loop com palmas falsas no Mac).
+    // Cancelar: Esc, “para” na fala, ou 2 palmas só quando dormindo não se aplica.
+    if (sessionRef.current === "listening") return;
+    if (speakingRef.current) return;
 
     const needsName = !settingsRef.current?.ownerName?.trim();
     enrollModeRef.current = needsName;
@@ -238,8 +235,8 @@ export function App() {
     setOrb("listening");
     setCaption(
       needsName
-        ? "Diga seu nome… (2 palmas cancela)"
-        : "Ouvindo… pode pensar; pausa curta não cancela",
+        ? "Diga seu nome… (Esc cancela)"
+        : "Ouvindo… Esc ou “para” para dormir",
     );
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -364,18 +361,24 @@ export function App() {
   startListeningRef.current = startListening;
   stopListeningRef.current = stopListening;
 
-  // Palmas: acordar OU cancelar
+  // Palmas: só acordar quando dormindo (nunca durante escuta/fala — evita loop no Mac)
   useEffect(() => {
     if (!ready) return;
     let cancelled = false;
+    clapArmedAtRef.current = performance.now() + 1500;
     (async () => {
       try {
         const handle = await startClapWake({
-          isActive: () => sessionRef.current !== "busy",
+          isActive: () =>
+            sessionRef.current === "dormant" &&
+            !speakingRef.current &&
+            performance.now() >= clapArmedAtRef.current,
           onLevel: (lv) => {
             if (sessionRef.current === "dormant") setLevel(lv * 0.15);
           },
           onWake: () => {
+            if (sessionRef.current !== "dormant" || speakingRef.current) return;
+            if (performance.now() < clapArmedAtRef.current) return;
             void startListeningRef.current();
           },
         });
@@ -460,7 +463,7 @@ export function App() {
         </div>
 
         <div className="hint-bar">
-          2 palmas / espaço acordam · esc ou “para” dorme · , ajustes · / texto
+          2 palmas / espaço acordam · esc ou “para” dormem · , ajustes · / texto
         </div>
       </div>
 

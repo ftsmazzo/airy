@@ -24,7 +24,8 @@ export async function startClapWake(opts: {
     audio: {
       echoCancellation: true,
       noiseSuppression: true,
-      autoGainControl: true,
+      // AGC no Mac infla picos e gera “palmas” falsas → loop acorda/dorme
+      autoGainControl: false,
     },
   });
   const ctx = new AudioContext();

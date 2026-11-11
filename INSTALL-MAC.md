@@ -49,10 +49,20 @@ Esperado: `Doctor: OK` e `5/5 checks OK` no smoke.
 npm run preview:orb
 ```
 
-## 5) App completo (Electron) — use este, não o preview
+## 5) Atalho na Área de Trabalho (ícone Airy / Jarvis)
+
+```bash
+npm run desktop-shortcut
+```
+
+Cria **Airy.app** na Área de Trabalho com ícone do núcleo + texto AIRY.  
+O `setup-mac.sh` já tenta criar esse atalho automaticamente.
+
+## 6) App completo (Electron) — use este, não o preview
 
 ```bash
 npm run dev
+# ou duplo clique em Airy na Área de Trabalho
 ```
 
 - `npm run preview:orb` = **só a orbe** (sem agente; mensagem “Agente indisponível” é esperada).

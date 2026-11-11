@@ -64,9 +64,21 @@ async function ensureMicAccess(): Promise<void> {
   }
 }
 
+function resolveAppIcon(): string | undefined {
+  const candidates = [
+    join(__dirname, "../assets/icon.png"),
+    join(__dirname, "../assets/icon.jpg"),
+    join(__dirname, "../../../apps/desktop/assets/icon.png"),
+    join(process.cwd(), "apps/desktop/assets/icon.png"),
+    join(process.cwd(), "assets/icon.png"),
+  ];
+  return candidates.find((p) => existsSync(p));
+}
+
 function createWindow() {
   const display = screen.getPrimaryDisplay();
   const { width, height } = display.workAreaSize;
+  const icon = resolveAppIcon();
 
   mainWindow = new BrowserWindow({
     width,
@@ -80,6 +92,7 @@ function createWindow() {
     backgroundColor: "#02040a",
     title: "Airy",
     autoHideMenuBar: true,
+    ...(icon ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, "preload.js"),
       contextIsolation: true,

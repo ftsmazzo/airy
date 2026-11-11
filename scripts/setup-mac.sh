@@ -60,15 +60,17 @@ fi
 echo "==> Doctor…"
 node scripts/doctor.mjs || true
 
+echo "==> Atalho na Área de Trabalho (ícone Airy)…"
+node scripts/install-desktop-shortcut.mjs || true
+
 cat <<'EOF'
 
 ==> Pronto para o próximo passo
 
-1) Edite o .env com as keys (OpenRouter, ElevenLabs, MCP_TOKEN, AIRY_RADAR_URL)
+1) Keys: no app use a tecla , (ou .env opcional)
 2) Valide:  npm run doctor
 3) Smoke:   npm run smoke:accept
-4) Orbe:    npm run preview:orb
-5) App:     npm run dev
+4) App:     npm run dev   — ou duplo clique em Airy na Área de Trabalho
    → macOS vai pedir microfone na 1ª fala/palmas — permita.
 
 Guia completo: INSTALL-MAC.md

@@ -195,6 +195,7 @@ export function settingsToAiryEnv(s: SettingsForm, fallback: AiryEnv): AiryEnv {
   return {
     openrouterApiKey: s.openrouterApiKey || fallback.openrouterApiKey,
     openrouterModel: s.openrouterModel || fallback.openrouterModel,
+    researchModel: fallback.researchModel || "perplexity/sonar",
     elevenApiKey: s.elevenApiKey || fallback.elevenApiKey,
     elevenVoiceId: s.elevenVoiceId || fallback.elevenVoiceId,
     elevenTtsModel: s.elevenTtsModel || fallback.elevenTtsModel,

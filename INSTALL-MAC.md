@@ -13,32 +13,26 @@ chmod +x scripts/setup-mac.sh
 
 Requisitos: macOS + [Homebrew](https://brew.sh) se o Node 20+ ainda não existir.
 
-## 2) Keys (obrigatório)
+## 2) Keys — sem ficar editando `.env`
 
-Copie o `.env` já preenchido (AirDrop / 1Password) **ou** edite:
+**Forma recomendada:** abra o app e pressione **`,`** (vírgula) → painel **Ajustes**.
 
-```bash
-nano .env
-```
+- Segredos (OpenRouter, ElevenLabs, MCP) vão para o **cofre do macOS (Keychain)** via Electron `safeStorage`.
+- Nome do dono + URL do Radar ficam em preferência local (`userData`) — **não** em banco remoto.
+- Nada disso vai para o GitHub.
 
-Precisa de:
+Se existir um `.env` antigo na pasta, na 1ª abertura o Airy **importa** para o cofre e você pode apagar o `.env`.
 
-| Key | Onde pegar |
-|-----|------------|
-| `OPENROUTER_API_KEY` | openrouter.ai |
-| `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID` | ElevenLabs Pro |
-| `MCP_TOKEN` | mesmo do ie-dados |
-| `AIRY_RADAR_URL` | URL real do Radar Municipal |
+`.env` continua opcional (dev/CI). Obrigatórios no painel:
 
-Opcionais de voz (já alinhados à conta Pro):
+| Campo | Onde pegar |
+|-------|------------|
+| OpenRouter API Key | openrouter.ai |
+| ElevenLabs API Key + Voice ID | ElevenLabs Pro |
+| MCP Token | ie-dados |
+| Radar URL / Seu nome | preferências |
 
-```env
-ELEVENLABS_MODEL_ID=eleven_v4
-ELEVENLABS_STABILITY=0.35
-ELEVENLABS_SIMILARITY=0.75
-ELEVENLABS_STYLE=0
-ELEVENLABS_SPEED=1.0
-```
+Opcionais de voz no cofre/defaults: `eleven_v4`, stability 0.35, etc.
 
 ## 3) Validar
 

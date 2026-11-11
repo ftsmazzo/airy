@@ -232,3 +232,93 @@ body,
   font-size: 11px;
   color: var(--muted);
 }
+
+.setup-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: rgba(2, 4, 10, 0.72);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.setup-sheet {
+  width: min(480px, 94vw);
+  max-height: 90vh;
+  overflow: auto;
+  padding: 20px 18px 16px;
+  border-radius: 16px;
+  background: rgba(6, 12, 22, 0.96);
+  border: 1px solid rgba(62, 203, 255, 0.25);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+}
+
+.setup-sheet h2 {
+  margin: 0 0 6px;
+  font-family: Orbitron, sans-serif;
+  font-size: 16px;
+  letter-spacing: 0.12em;
+}
+
+.setup-lead {
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.setup-sheet label {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+.setup-sheet input {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--fg);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font: inherit;
+  outline: none;
+}
+
+.setup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.setup-actions button {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  color: #031018;
+  background: linear-gradient(135deg, var(--cyan), var(--ok));
+}
+
+.setup-actions button.ghost {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--fg);
+}
+
+.setup-msg {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--cyan-hot);
+}
+
+.setup-path {
+  margin: 4px 0 0;
+  font-size: 10px;
+  color: #5a6d82;
+  word-break: break-all;
+}

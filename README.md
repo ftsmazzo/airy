@@ -10,7 +10,8 @@ Agente de voz PT-BR (ElevenLabs + OpenRouter) com orbe, MCP **ie-dados** e abert
 git clone https://github.com/ftsmazzo/airy.git
 cd airy
 chmod +x scripts/setup-mac.sh && ./scripts/setup-mac.sh
-# cole o .env → npm run doctor && npm run smoke:accept && npm run dev
+# npm run doctor && npm run smoke:accept && npm run dev
+# No app: tecla , → colar keys (cofre do SO). .env é opcional.
 ```
 
 ## Pré-requisitos

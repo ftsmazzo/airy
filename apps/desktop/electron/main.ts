@@ -11,7 +11,16 @@ import { config as loadDotenv } from "dotenv";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AiryAgent, loadEnvFromProcess } from "@airy/agent";
+import { AiryAgent, loadEnvFromProcess, type AiryEnv } from "@airy/agent";
+import {
+  importFromEnvIfEmpty,
+  loadSettings,
+  saveSettings,
+  settingsPublicView,
+  settingsStatus,
+  settingsToAiryEnv,
+  type SettingsForm,
+} from "./secureConfig.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -31,6 +40,12 @@ loadEnvFiles();
 
 let mainWindow: BrowserWindow | null = null;
 let agent: AiryAgent | null = null;
+let bootEnv: AiryEnv = loadEnvFromProcess();
+
+function resolveEnv(): AiryEnv {
+  const settings = loadSettings();
+  return settingsToAiryEnv(settings, bootEnv);
+}
 
 async function ensureMicAccess(): Promise<void> {
   if (process.platform !== "darwin") return;
@@ -79,10 +94,24 @@ function createWindow() {
 
 async function getAgent(): Promise<AiryAgent> {
   if (agent) return agent;
-  const env = loadEnvFromProcess();
+  const env = resolveEnv();
+  const missing: string[] = [];
+  if (!env.openrouterApiKey) missing.push("OpenRouter");
+  if (!env.elevenApiKey) missing.push("ElevenLabs");
+  if (!env.elevenVoiceId) missing.push("Voice ID");
+  if (!env.mcpToken) missing.push("MCP");
+  if (missing.length) {
+    throw new Error(
+      `Config incompleta (${missing.join(", ")}) — tecla , para Ajustes`,
+    );
+  }
   agent = new AiryAgent(env);
   await agent.ready();
   return agent;
+}
+
+function resetAgent() {
+  agent = null;
 }
 
 function packTurn(turn: {
@@ -100,6 +129,12 @@ function packTurn(turn: {
 }
 
 app.whenReady().then(async () => {
+  bootEnv = loadEnvFromProcess();
+  const imported = importFromEnvIfEmpty(bootEnv);
+  if (imported) {
+    console.log("[airy] .env importado para o cofre local (userData)");
+  }
+
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
     if (permission === "media" || permission === "microphone") {
       callback(true);
@@ -120,10 +155,48 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("airy:ready", async () => {
     try {
+      const view = settingsPublicView(loadSettings());
+      if (!view.configured) {
+        // ainda tenta .env legado
+        const env = resolveEnv();
+        if (env.openrouterApiKey && env.elevenApiKey && env.mcpToken && env.elevenVoiceId) {
+          await getAgent();
+          return { ok: true, settings: settingsPublicView(loadSettings()), importedFromEnv: imported };
+        }
+        return {
+          ok: false,
+          needsSetup: true,
+          error: `Falta configurar: ${view.missing.join(", ")}`,
+          settings: view,
+        };
+      }
       await getAgent();
-      return { ok: true };
+      return { ok: true, settings: view, importedFromEnv: imported };
     } catch (e) {
-      return { ok: false, error: (e as Error).message };
+      return {
+        ok: false,
+        error: (e as Error).message,
+        settings: settingsPublicView(loadSettings()),
+      };
+    }
+  });
+
+  ipcMain.handle("airy:settings-get", async () => settingsPublicView(loadSettings()));
+
+  ipcMain.handle("airy:settings-save", async (_evt, partial: Partial<SettingsForm>) => {
+    try {
+      // não sobrescrever segredo com string vazia (campo mascarado na UI)
+      const cur = loadSettings();
+      const clean: Partial<SettingsForm> = { ...partial };
+      if (clean.openrouterApiKey === "") delete clean.openrouterApiKey;
+      if (clean.elevenApiKey === "") delete clean.elevenApiKey;
+      if (clean.mcpToken === "") delete clean.mcpToken;
+      saveSettings({ ...cur, ...clean });
+      resetAgent();
+      await getAgent();
+      return { ok: true, settings: settingsPublicView(loadSettings()) };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message, settings: settingsPublicView(loadSettings()) };
     }
   });
 

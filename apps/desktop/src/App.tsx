@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Orb, type OrbState } from "./components/Orb";
+import { SetupSheet } from "./components/SetupSheet";
 import { startClapWake, type ClapWakeHandle } from "./lib/clapWake";
+import type { AirySettingsView } from "./vite-env";
 
 type Turn = {
   userText: string;
@@ -19,6 +21,8 @@ export function App() {
   const [bootError, setBootError] = useState<string | null>(null);
   const [session, setSession] = useState<Session>("dormant");
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [settings, setSettings] = useState<AirySettingsView | null>(null);
   const [text, setText] = useState("");
   const [turn, setTurn] = useState<Turn | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -57,14 +61,24 @@ export function App() {
       try {
         const r = await window.airy.ready();
         if (cancelled) return;
-        if (!r.ok) {
-          setBootError(r.error || "Falha ao iniciar agente");
+        if (r.settings) setSettings(r.settings as AirySettingsView);
+        if (r.needsSetup || !r.ok) {
+          setBootError(r.error || "Configure as keys uma vez");
+          setSetupOpen(true);
           return;
         }
         setReady(true);
-        goDormant();
+        setBootError(null);
+        goDormant(
+          r.importedFromEnv
+            ? "Keys importadas do .env · dormindo"
+            : DORMANT_CAPTION,
+        );
       } catch (e) {
-        if (!cancelled) setBootError((e as Error).message);
+        if (!cancelled) {
+          setBootError((e as Error).message);
+          setSetupOpen(true);
+        }
       }
     })();
     return () => {
@@ -319,8 +333,16 @@ export function App() {
         setSheetOpen((v) => !v);
         return;
       }
+      if (e.code === "Comma" && !e.metaKey && !e.ctrlKey) {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        e.preventDefault();
+        setSetupOpen(true);
+        return;
+      }
       if (e.code === "Escape") {
         setSheetOpen(false);
+        setSetupOpen(false);
         if (sessionRef.current === "listening" || speakingRef.current) {
           stopListeningRef.current({ discard: true, reason: "Parei." });
           goDormant("Dormindo · 2 palmas para acordar");
@@ -368,11 +390,26 @@ export function App() {
         </div>
 
         <div className="hint-bar">
-          2 palmas / espaço = acordar ou parar · “para” / “chega” na fala · esc cancela
+          2 palmas / espaço · “para” na fala · , ajustes · / texto
         </div>
       </div>
 
-      {(bootError || error) && <div className="error-toast">{bootError || error}</div>}
+      {(bootError || error) && !setupOpen && (
+        <div className="error-toast">{bootError || error}</div>
+      )}
+
+      <SetupSheet
+        open={setupOpen}
+        initial={settings}
+        onClose={() => setSetupOpen(false)}
+        onSaved={(s) => {
+          setSettings(s);
+          setReady(s.configured);
+          setBootError(null);
+          setSetupOpen(false);
+          goDormant(DORMANT_CAPTION);
+        }}
+      />
 
       <div className={`sheet ${sheetOpen ? "open" : ""}`}>
         <div className="row">
@@ -392,7 +429,7 @@ export function App() {
             Enviar
           </button>
         </div>
-        <div className="meta">AIRY_OWNER_NAME no .env · uso principal é voz</div>
+        <div className="meta">Tecla , abre ajustes (keys no cofre do SO)</div>
       </div>
     </div>
   );

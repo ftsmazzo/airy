@@ -1,8 +1,8 @@
-# Airy
+# Airy — Agente do Futuro
 
-Agente de voz PT-BR (ElevenLabs + OpenRouter) com orbe, MCP **ie-dados** e aberturas simples (Radar Municipal, YouTube, Spotify).
+Assistente de voz em português: escuta, responde e age com você — orbe vivo, wake por palmas e atalhos do dia a dia.
 
-**Instalação no Mac (sócio):** veja [`INSTALL-MAC.md`](./INSTALL-MAC.md)
+**Instalação no Mac:** [`INSTALL-MAC.md`](./INSTALL-MAC.md)
 
 ## One-liner (Mac)
 
@@ -17,10 +17,8 @@ chmod +x scripts/setup-mac.sh && ./scripts/setup-mac.sh
 ## Pré-requisitos
 
 - Node.js **20+**
-- Conta **OpenRouter** (modelo com tools)
-- Conta **ElevenLabs Pro** (API key + Voice ID PT-BR)
-- Token MCP ie-dados (`MCP_TOKEN`)
-- macOS recomendado (Windows abre URLs; Spotify via web)
+- Contas de voz e inteligência (configura uma vez no app, tecla `,`)
+- macOS ou Windows
 
 ## Variáveis (`.env`)
 

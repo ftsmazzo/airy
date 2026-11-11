@@ -110,7 +110,8 @@ function winShortcut() {
   const ico = join(ROOT, "apps/desktop/assets/icon.ico");
   const iconPath = existsSync(ico) ? ico : iconSrc;
 
-  const bat = join(desktopDir, "Airy.bat");
+  // .bat fica DENTRO do repo (não na Área de Trabalho)
+  const bat = join(ROOT, "scripts", "Airy-desktop.bat");
   const batBody = `@echo off
 title Airy
 cd /d "${ROOT}"
@@ -125,6 +126,23 @@ if errorlevel 1 pause
 `;
   writeFileSync(bat, batBody, "utf8");
 
+  // remove .bat antigo que poluía a Área de Trabalho
+  for (const stale of [
+    join(desktopDir, "Airy.bat"),
+    join(homedir(), "Desktop", "Airy.bat"),
+    join(homedir(), "Área de Trabalho", "Airy.bat"),
+  ]) {
+    try {
+      if (existsSync(stale)) {
+        spawnSync("attrib", ["-H", stale], { shell: true });
+        spawnSync("cmd", ["/c", "del", "/f", "/q", stale], { shell: true });
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // só o ícone (.lnk) na Área de Trabalho
   const lnk = join(desktopDir, "Airy.lnk");
   const ps = `
 $W = New-Object -ComObject WScript.Shell
@@ -139,11 +157,10 @@ $S.Save()
   const r = spawnSync("powershell", ["-NoProfile", "-Command", ps], { encoding: "utf8" });
   if (r.status !== 0) {
     console.error(r.stderr || r.stdout);
-    console.log(`OK  Fallback: use o Airy.bat na Área de Trabalho (${bat})`);
-    return;
+    process.exit(1);
   }
-  console.log(`OK  Atalho Windows: ${lnk}`);
-  console.log(`OK  Launcher:       ${bat}`);
+  console.log(`OK  Ícone na Área de Trabalho: ${lnk}`);
+  console.log(`    (launcher interno: scripts/Airy-desktop.bat)`);
 }
 
 if (process.platform === "darwin") macShortcut();

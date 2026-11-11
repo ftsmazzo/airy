@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Orb, type OrbState } from "./components/Orb";
 import { SetupSheet } from "./components/SetupSheet";
 import { startClapWake, type ClapWakeHandle } from "./lib/clapWake";
+import { startNameWake, type NameWakeHandle } from "./lib/nameWake";
+import { parseWakeUtterance } from "./lib/wakePhrase";
 import type { AirySettingsView } from "./vite-env";
 
 type Turn = {
@@ -12,7 +14,8 @@ type Turn = {
 
 type Session = "dormant" | "listening" | "busy";
 
-const DORMANT_CAPTION = "Dormindo · 2 palmas ou Espaço para acordar";
+const DORMANT_CAPTION =
+  'Dormindo · diga “Airy …” · ou Espaço / 2 palmas';
 
 export function App() {
   const [orb, setOrb] = useState<OrbState>("idle");
@@ -31,18 +34,29 @@ export function App() {
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const clapRef = useRef<ClapWakeHandle | null>(null);
+  const nameWakeRef = useRef<NameWakeHandle | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const sessionRef = useRef<Session>("dormant");
   const discardRef = useRef(false);
   const speakingRef = useRef(false);
   const settingsRef = useRef<AirySettingsView | null>(null);
   const enrollModeRef = useRef(false);
-  /** Bloqueia palmas por um tempo após dormir — evita oscilação acorda/dorme. */
+  /** Bloqueia wake por um tempo após dormir — evita oscilação. */
   const clapArmedAtRef = useRef(0);
+  /** Uma re-escuta se o 1º trecho vier vazio (Espaço “parece” que dormiu). */
+  const listenRetryRef = useRef(false);
   const startListeningRef = useRef<() => Promise<void>>(async () => {});
   const stopListeningRef = useRef<(opts?: { discard?: boolean; reason?: string }) => void>(
     () => {},
   );
+  const runTurnRef = useRef<(
+    fn: () => Promise<{
+      userText: string;
+      assistantText: string;
+      audioBase64: string | null;
+      toolTrace: string[];
+    }>,
+  ) => Promise<void>>(async () => {});
 
   useEffect(() => {
     sessionRef.current = session;
@@ -56,7 +70,7 @@ export function App() {
     setOrb("idle");
     setLevel(0);
     setCaption(msg);
-    clapArmedAtRef.current = performance.now() + 2800;
+    clapArmedAtRef.current = performance.now() + 1800;
   }, []);
 
   useEffect(() => {
@@ -180,11 +194,13 @@ export function App() {
         return;
       }
       goDormant(
-        stopped ? "Dormindo · 2 palmas quando quiser" : DORMANT_CAPTION,
+        stopped ? "Dormindo · chame Airy quando quiser" : DORMANT_CAPTION,
       );
     },
     [goDormant, playAudio],
   );
+
+  runTurnRef.current = runTurn;
 
   const stopListening = useCallback(
     (opts?: { discard?: boolean; reason?: string }) => {
@@ -256,18 +272,30 @@ export function App() {
       discardRef.current = false;
       enrollModeRef.current = false;
       if (discard) {
+        listenRetryRef.current = false;
         goDormant(DORMANT_CAPTION);
         return;
       }
       const blob = new Blob(chunksRef.current, { type: rec.mimeType });
       if (blob.size < 800) {
+        if (!enrolling && !listenRetryRef.current) {
+          listenRetryRef.current = true;
+          // libera o guard de re-entrada (ainda estávamos em "listening")
+          sessionRef.current = "dormant";
+          setSession("dormant");
+          setCaption("Ainda ouvindo… pode falar");
+          void startListeningRef.current();
+          return;
+        }
+        listenRetryRef.current = false;
         goDormant(
           enrolling
-            ? "Não ouvi o nome · 2 palmas de novo"
-            : "Não ouvi nada · 2 palmas para tentar",
+            ? "Não ouvi o nome · chame Airy de novo"
+            : "Não ouvi nada · diga “Airy …” ou Espaço",
         );
         return;
       }
+      listenRetryRef.current = false;
       const buf = await blob.arrayBuffer();
       const b64 = bufferToBase64(buf);
       const ext = rec.mimeType.includes("ogg") ? "ogg" : "webm";
@@ -311,11 +339,11 @@ export function App() {
     analyser.fftSize = 1024;
     source.connect(analyser);
     const data = new Uint8Array(analyser.fftSize);
-    // Escuta paciente: mic lento + pausa pra pensar não dormem a sessão
-    const MIN_MS = 2800; // não encerra antes disso
-    const SILENCE_MS = 4200; // silêncio após fala (pensar / respirar)
-    const MAX_MS = 28000;
-    const SPEECH_THRESH = 0.045;
+    // Escuta paciente: pausa pra pensar não encerra a sessão
+    const MIN_MS = 3500;
+    const SILENCE_MS = 5200;
+    const MAX_MS = 32000;
+    const SPEECH_THRESH = 0.055;
     const started = performance.now();
     let heardSpeech = false;
     let silentFor = 0;
@@ -361,11 +389,11 @@ export function App() {
   startListeningRef.current = startListening;
   stopListeningRef.current = stopListening;
 
-  // Palmas: só acordar quando dormindo (nunca durante escuta/fala — evita loop no Mac)
+  // Palmas: backup — só acordar quando dormindo
   useEffect(() => {
     if (!ready) return;
     let cancelled = false;
-    clapArmedAtRef.current = performance.now() + 1500;
+    clapArmedAtRef.current = performance.now() + 1200;
     (async () => {
       try {
         const handle = await startClapWake({
@@ -374,11 +402,12 @@ export function App() {
             !speakingRef.current &&
             performance.now() >= clapArmedAtRef.current,
           onLevel: (lv) => {
-            if (sessionRef.current === "dormant") setLevel(lv * 0.15);
+            if (sessionRef.current === "dormant") setLevel(lv * 0.12);
           },
           onWake: () => {
             if (sessionRef.current !== "dormant" || speakingRef.current) return;
             if (performance.now() < clapArmedAtRef.current) return;
+            listenRetryRef.current = false;
             void startListeningRef.current();
           },
         });
@@ -392,6 +421,56 @@ export function App() {
       cancelled = true;
       clapRef.current?.stop();
       clapRef.current = null;
+    };
+  }, [ready]);
+
+  // Wake por nome: “Airy, abre o radar” / “faz isso Airy” (passivo, só dormindo)
+  useEffect(() => {
+    if (!ready) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const handle = await startNameWake({
+          isArmed: () =>
+            sessionRef.current === "dormant" &&
+            !speakingRef.current &&
+            performance.now() >= clapArmedAtRef.current,
+          onLevel: (lv) => {
+            if (sessionRef.current === "dormant") setLevel(lv * 0.1);
+          },
+          onUtterance: async (b64, filename) => {
+            if (!window.airy?.transcribe) return;
+            if (sessionRef.current !== "dormant" || speakingRef.current) return;
+            try {
+              const { text } = await window.airy.transcribe(b64, filename);
+              const wake = parseWakeUtterance(text);
+              if (!wake.hit) return;
+              if (sessionRef.current !== "dormant") return;
+
+              const needsName = !settingsRef.current?.ownerName?.trim();
+              if (needsName || !wake.command) {
+                listenRetryRef.current = false;
+                void startListeningRef.current();
+                return;
+              }
+              await runTurnRef.current(() =>
+                window.airy!.textTurn(wake.command),
+              );
+            } catch (e) {
+              setError(`Wake: ${(e as Error).message}`);
+            }
+          },
+        });
+        if (cancelled) handle.stop();
+        else nameWakeRef.current = handle;
+      } catch (e) {
+        setError(`Mic wake: ${(e as Error).message}`);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      nameWakeRef.current?.stop();
+      nameWakeRef.current = null;
     };
   }, [ready]);
 
@@ -416,16 +495,20 @@ export function App() {
         setSetupOpen(false);
         if (sessionRef.current === "listening" || speakingRef.current) {
           stopListeningRef.current({ discard: true, reason: "Parei." });
-          goDormant("Dormindo · 2 palmas para acordar");
+          goDormant(DORMANT_CAPTION);
         }
         return;
       }
       if (e.code !== "Space" || e.repeat) return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
-      // Espaço só acorda — não dorme no meio da escuta (use Esc / “para” / 2ª palmada)
-      if (sessionRef.current !== "dormant") return;
+      // Espaço só acorda; se já estiver ouvindo/ocupada, ignora (não dorme)
+      if (sessionRef.current !== "dormant") {
+        e.preventDefault();
+        return;
+      }
       e.preventDefault();
+      listenRetryRef.current = false;
       void startListeningRef.current();
     };
     window.addEventListener("keydown", onKey);
@@ -463,7 +546,7 @@ export function App() {
         </div>
 
         <div className="hint-bar">
-          2 palmas / espaço acordam · esc ou “para” dormem · , ajustes · / texto
+          “airy …” / espaço / palmas · esc ou “para” dormem · , ajustes · / texto
         </div>
       </div>
 

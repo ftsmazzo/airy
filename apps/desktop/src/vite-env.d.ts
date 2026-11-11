@@ -44,6 +44,10 @@ export type AiryApi = {
   textTurn: (text: string) => Promise<AiryTurn>;
   voiceTurn: (audioBase64: string, filename: string) => Promise<AiryTurn>;
   speak: (text: string) => Promise<{ audioBase64: string }>;
+  transcribe: (
+    audioBase64: string,
+    filename: string,
+  ) => Promise<{ text: string }>;
   enrollName: (
     audioBase64: string,
     filename: string,

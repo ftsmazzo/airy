@@ -10,13 +10,13 @@ export type ClapConfig = {
   cooldownMs: number;
 };
 
-/** Mais estrito: evita loop acorda/dorme com mic sensível (Mac) / ruído. */
+/** Equilíbrio: menos falso positivo que o P1 inicial, mais pegável que o filtro extremo. */
 export const DEFAULT_CLAP_CONFIG: ClapConfig = {
-  peakRatio: 4.8,
-  minPeak: 0.2,
-  minGapMs: 160,
-  maxGapMs: 650,
-  cooldownMs: 4000,
+  peakRatio: 4.0,
+  minPeak: 0.15,
+  minGapMs: 140,
+  maxGapMs: 750,
+  cooldownMs: 3000,
 };
 
 export type ClapDetectorState = {

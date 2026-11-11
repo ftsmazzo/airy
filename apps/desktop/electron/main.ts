@@ -292,6 +292,21 @@ app.whenReady().then(async () => {
     return { audioBase64: audioMp3.toString("base64") };
   });
 
+  /** STT só — wake por “Airy …” sem rodar o agente. */
+  ipcMain.handle(
+    "airy:transcribe",
+    async (_evt, payload: { audioBase64: string; filename: string }) => {
+      await ensureMicAccess();
+      const env = resolveEnv();
+      if (!env.elevenApiKey) throw new Error("ElevenLabs não configurado");
+      const buf = Buffer.from(payload.audioBase64, "base64");
+      const text = await transcribeAudio(buf, payload.filename || "wake.webm", {
+        apiKey: env.elevenApiKey,
+      });
+      return { text: text || "" };
+    },
+  );
+
   /** Primeira ativação: ouve o nome, grava no cofre local, confirma. */
   ipcMain.handle(
     "airy:enroll-name",

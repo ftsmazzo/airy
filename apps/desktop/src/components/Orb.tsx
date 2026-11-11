@@ -8,32 +8,27 @@ type Props = {
   level?: number;
 };
 
-/** Núcleo estilo JARVIS — HUD ciano, anéis, arcs e varredura (não “planeta”). */
+/**
+ * HUD Jarvis — linhas, anéis e arcs. Sem esfera “planetária” preenchida.
+ */
 const COLORS: Record<OrbState, number> = {
-  idle: 0x2ec8ff,
-  listening: 0x5ef0ff,
-  thinking: 0x7eb6ff,
-  speaking: 0x4dffe0,
+  idle: 0x33cfff,
+  listening: 0x6af7ff,
+  thinking: 0x8ab4ff,
+  speaking: 0x5dffd5,
 };
 
-function softDisc(): THREE.CanvasTexture {
-  const s = 128;
-  const c = document.createElement("canvas");
-  c.width = c.height = s;
-  const g = c.getContext("2d")!;
-  const r = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
-  r.addColorStop(0, "rgba(255,255,255,1)");
-  r.addColorStop(0.2, "rgba(180,240,255,0.85)");
-  r.addColorStop(0.55, "rgba(80,200,255,0.25)");
-  r.addColorStop(1, "rgba(0,0,0,0)");
-  g.fillStyle = r;
-  g.fillRect(0, 0, s, s);
-  const t = new THREE.CanvasTexture(c);
-  t.needsUpdate = true;
-  return t;
+function lineMat(color: number, opacity: number) {
+  return new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
 }
 
-function addMat(color: number, opacity: number) {
+function meshMat(color: number, opacity: number) {
   return new THREE.MeshBasicMaterial({
     color,
     transparent: true,
@@ -41,7 +36,26 @@ function addMat(color: number, opacity: number) {
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     side: THREE.DoubleSide,
+    wireframe: false,
   });
+}
+
+function circleLine(radius: number, segments = 128): THREE.BufferGeometry {
+  const pts: THREE.Vector3[] = [];
+  for (let i = 0; i <= segments; i++) {
+    const a = (i / segments) * Math.PI * 2;
+    pts.push(new THREE.Vector3(Math.cos(a) * radius, Math.sin(a) * radius, 0));
+  }
+  return new THREE.BufferGeometry().setFromPoints(pts);
+}
+
+function arcLine(radius: number, start: number, end: number, segments = 64) {
+  const pts: THREE.Vector3[] = [];
+  for (let i = 0; i <= segments; i++) {
+    const a = start + ((end - start) * i) / segments;
+    pts.push(new THREE.Vector3(Math.cos(a) * radius, Math.sin(a) * radius, 0));
+  }
+  return new THREE.BufferGeometry().setFromPoints(pts);
 }
 
 export function Orb({ state, level = 0 }: Props) {
@@ -61,8 +75,8 @@ export function Orb({ state, level = 0 }: Props) {
     if (!mount) return;
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100);
-    camera.position.set(0, 0.15, 5.6);
+    const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
+    camera.position.set(0, 0, 6.2);
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
@@ -75,137 +89,141 @@ export function Orb({ state, level = 0 }: Props) {
 
     const root = new THREE.Group();
     scene.add(root);
-    const sprite = softDisc();
-    const disposables: Array<{ dispose: () => void }> = [sprite];
+    const trash: Array<{ dispose: () => void }> = [];
 
-    // —— Núcleo ——
-    const coreGeo = new THREE.IcosahedronGeometry(0.48, 2);
-    const coreWire = new THREE.Mesh(
-      coreGeo,
+    const colorize: Array<{ mat: THREE.Material & { color: THREE.Color; opacity: number }; baseOp: number }> = [];
+
+    const addLine = (geo: THREE.BufferGeometry, opacity: number, rot?: [number, number, number]) => {
+      const mat = lineMat(COLORS.idle, opacity);
+      const line = new THREE.Line(geo, mat);
+      if (rot) line.rotation.set(...rot);
+      root.add(line);
+      trash.push(geo, mat);
+      colorize.push({ mat, baseOp: opacity });
+      return line;
+    };
+
+    // —— Núcleo: só wireframe (sem bola sólida) ——
+    const core = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.42, 1),
       new THREE.MeshBasicMaterial({
         color: COLORS.idle,
         wireframe: true,
         transparent: true,
-        opacity: 0.65,
+        opacity: 0.85,
       }),
     );
-    const coreFill = new THREE.Mesh(
-      new THREE.IcosahedronGeometry(0.36, 3),
-      addMat(COLORS.idle, 0.4),
+    root.add(core);
+    trash.push(core.geometry, core.material as THREE.Material);
+    colorize.push({ mat: core.material as THREE.MeshBasicMaterial, baseOp: 0.85 });
+
+    const coreInner = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.22, 0),
+      new THREE.MeshBasicMaterial({
+        color: COLORS.idle,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.7,
+      }),
     );
-    const coreGlow = new THREE.Mesh(new THREE.SphereGeometry(0.72, 48, 48), addMat(COLORS.idle, 0.14));
-    const coreHalo = new THREE.Mesh(new THREE.SphereGeometry(1.05, 32, 32), addMat(COLORS.idle, 0.07));
-    root.add(coreWire, coreFill, coreGlow, coreHalo);
-    disposables.push(coreGeo, coreWire.material as THREE.Material, coreFill.geometry, coreFill.material as THREE.Material, coreGlow.geometry, coreGlow.material as THREE.Material, coreHalo.geometry, coreHalo.material as THREE.Material);
+    root.add(coreInner);
+    trash.push(coreInner.geometry, coreInner.material as THREE.Material);
+    colorize.push({ mat: coreInner.material as THREE.MeshBasicMaterial, baseOp: 0.7 });
 
-    // —— Anéis principais (estilo reator) ——
-    const rings: THREE.Mesh[] = [];
-    const ringDefs = [
-      { r: 1.05, t: 0.012, op: 0.7, rx: Math.PI / 2, ry: 0, rz: 0 },
-      { r: 1.28, t: 0.008, op: 0.45, rx: Math.PI / 2.35, ry: 0.55, rz: 0.2 },
-      { r: 1.55, t: 0.007, op: 0.35, rx: Math.PI / 1.75, ry: -0.4, rz: 0.5 },
-      { r: 1.88, t: 0.006, op: 0.28, rx: Math.PI / 2.1, ry: 0.9, rz: -0.3 },
-      { r: 2.22, t: 0.005, op: 0.18, rx: Math.PI / 2.6, ry: -0.7, rz: 0.15 },
-    ];
-    for (const d of ringDefs) {
-      const mesh = new THREE.Mesh(new THREE.TorusGeometry(d.r, d.t, 10, 240), addMat(COLORS.idle, d.op));
-      mesh.rotation.set(d.rx, d.ry, d.rz);
-      root.add(mesh);
-      rings.push(mesh);
-      disposables.push(mesh.geometry, mesh.material as THREE.Material);
-    }
-
-    // —— Arcs / varredura ——
-    const arcs: THREE.Mesh[] = [];
-    for (const conf of [
-      { r: 1.4, t: 0.018, arc: Math.PI * 0.9, op: 0.85 },
-      { r: 1.7, t: 0.014, arc: Math.PI * 0.55, op: 0.55 },
-      { r: 2.05, t: 0.012, arc: Math.PI * 1.15, op: 0.4 },
-    ]) {
-      const m = new THREE.Mesh(
-        new THREE.TorusGeometry(conf.r, conf.t, 8, 100, conf.arc),
-        addMat(COLORS.idle, conf.op),
-      );
-      m.rotation.x = Math.PI / 2;
-      root.add(m);
-      arcs.push(m);
-      disposables.push(m.geometry, m.material as THREE.Material);
-    }
-
-    // —— Hex HUD (anel facetado) ——
-    const hex = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.15, 1.15, 0.02, 6, 1, true),
-      addMat(COLORS.idle, 0.22),
-    );
-    hex.rotation.x = Math.PI / 2;
-    root.add(hex);
-    disposables.push(hex.geometry, hex.material as THREE.Material);
-
-    // —— Ticks orbitais ——
-    const tickN = 96;
-    const tickPos = new Float32Array(tickN * 3);
-    for (let i = 0; i < tickN; i++) {
-      const a = (i / tickN) * Math.PI * 2;
-      const r = i % 4 === 0 ? 2.45 : 2.35;
-      tickPos[i * 3] = Math.cos(a) * r;
-      tickPos[i * 3 + 1] = Math.sin(a) * r * 0.12;
-      tickPos[i * 3 + 2] = Math.sin(a) * r * 0.04;
-    }
-    const tickGeo = new THREE.BufferGeometry();
-    tickGeo.setAttribute("position", new THREE.BufferAttribute(tickPos, 3));
-    const tickMat = new THREE.PointsMaterial({
-      size: 0.04,
-      map: sprite,
-      color: COLORS.idle,
-      transparent: true,
-      opacity: 0.75,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
+    // —— Anéis circulares finos (linha, não torus grosso) ——
+    const ringPlanes: THREE.Object3D[] = [];
+    const ringRadii = [0.85, 1.15, 1.45, 1.8, 2.2, 2.55];
+    ringRadii.forEach((r, i) => {
+      const g = new THREE.Group();
+      g.add(addLine(circleLine(r), 0.55 - i * 0.05));
+      // ticks
+      for (let t = 0; t < 24; t++) {
+        if (t % 3 !== 0) continue;
+        const a = (t / 24) * Math.PI * 2;
+        const x0 = Math.cos(a) * (r - 0.04);
+        const y0 = Math.sin(a) * (r - 0.04);
+        const x1 = Math.cos(a) * (r + 0.06);
+        const y1 = Math.sin(a) * (r + 0.06);
+        addLine(
+          new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(x0, y0, 0),
+            new THREE.Vector3(x1, y1, 0),
+          ]),
+          0.35,
+        );
+      }
+      g.rotation.x = i % 2 === 0 ? 0.15 : -0.35;
+      g.rotation.y = i * 0.4;
+      root.add(g);
+      ringPlanes.push(g);
     });
-    const ticks = new THREE.Points(tickGeo, tickMat);
-    root.add(ticks);
-    disposables.push(tickGeo, tickMat);
 
-    // —— Sparks internos ——
-    const sparkN = 260;
-    const sparkPos = new Float32Array(sparkN * 3);
-    for (let i = 0; i < sparkN; i++) {
-      const r = 0.5 + Math.random() * 0.85;
-      const th = Math.random() * Math.PI * 2;
-      const ph = Math.acos(2 * Math.random() - 1);
-      sparkPos[i * 3] = r * Math.sin(ph) * Math.cos(th);
-      sparkPos[i * 3 + 1] = r * Math.sin(ph) * Math.sin(th);
-      sparkPos[i * 3 + 2] = r * Math.cos(ph);
+    // —— Arcs de varredura ——
+    const sweep = new THREE.Group();
+    sweep.add(addLine(arcLine(1.95, 0, Math.PI * 0.7), 0.9));
+    sweep.add(addLine(arcLine(2.35, Math.PI * 0.9, Math.PI * 1.6), 0.55));
+    root.add(sweep);
+
+    // —— Hexágono HUD ——
+    const hexPts: THREE.Vector3[] = [];
+    for (let i = 0; i <= 6; i++) {
+      const a = (i / 6) * Math.PI * 2 - Math.PI / 2;
+      hexPts.push(new THREE.Vector3(Math.cos(a) * 1.05, Math.sin(a) * 1.05, 0));
     }
-    const sparkGeo = new THREE.BufferGeometry();
-    sparkGeo.setAttribute("position", new THREE.BufferAttribute(sparkPos, 3));
-    const sparkMat = new THREE.PointsMaterial({
-      size: 0.03,
-      map: sprite,
-      color: COLORS.idle,
-      transparent: true,
-      opacity: 0.9,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    });
-    const sparks = new THREE.Points(sparkGeo, sparkMat);
-    root.add(sparks);
-    disposables.push(sparkGeo, sparkMat);
+    const hex = addLine(new THREE.BufferGeometry().setFromPoints(hexPts), 0.5);
 
-    // —— Retículos (linhas HUD) ——
-    const crossMat = addMat(COLORS.idle, 0.2);
-    const mkLine = (points: THREE.Vector3[]) => {
-      const g = new THREE.BufferGeometry().setFromPoints(points);
-      const l = new THREE.Line(g, crossMat);
-      root.add(l);
-      disposables.push(g);
-      return l;
+    // —— Brackets retangulares (cantos) ——
+    const bracket = (x: number, y: number, s = 0.35) => {
+      const g = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(x, y - s, 0),
+        new THREE.Vector3(x, y, 0),
+        new THREE.Vector3(x + (x > 0 ? -s : s), y, 0),
+      ]);
+      addLine(g, 0.45);
     };
-    mkLine([new THREE.Vector3(-2.6, 0, 0), new THREE.Vector3(-1.1, 0, 0)]);
-    mkLine([new THREE.Vector3(1.1, 0, 0), new THREE.Vector3(2.6, 0, 0)]);
-    mkLine([new THREE.Vector3(0, -2.3, 0), new THREE.Vector3(0, -1.1, 0)]);
-    mkLine([new THREE.Vector3(0, 1.1, 0), new THREE.Vector3(0, 2.3, 0)]);
-    disposables.push(crossMat);
+    bracket(-2.7, 1.6);
+    bracket(2.7, 1.6);
+    bracket(-2.7, -1.6);
+    bracket(2.7, -1.6);
+
+    // —— Cruz / mira ——
+    addLine(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-0.55, 0, 0),
+        new THREE.Vector3(-0.2, 0, 0),
+      ]),
+      0.4,
+    );
+    addLine(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0.2, 0, 0),
+        new THREE.Vector3(0.55, 0, 0),
+      ]),
+      0.4,
+    );
+    addLine(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, -0.55, 0),
+        new THREE.Vector3(0, -0.2, 0),
+      ]),
+      0.4,
+    );
+    addLine(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0.2, 0),
+        new THREE.Vector3(0, 0.55, 0),
+      ]),
+      0.4,
+    );
+
+    // —— Disco de varredura (plano fino, quase invisível — só “radar”) ——
+    const scan = new THREE.Mesh(
+      new THREE.RingGeometry(0.01, 2.5, 64, 1, 0, Math.PI * 0.18),
+      meshMat(COLORS.idle, 0.08),
+    );
+    root.add(scan);
+    trash.push(scan.geometry, scan.material as THREE.Material);
+    colorize.push({ mat: scan.material as THREE.MeshBasicMaterial, baseOp: 0.08 });
 
     const resize = () => {
       const w = mount.clientWidth;
@@ -223,69 +241,41 @@ export function Orb({ state, level = 0 }: Props) {
     const target = new THREE.Color(COLORS.idle);
     const current = new THREE.Color(COLORS.idle);
 
-    const paint = (c: THREE.Color) => {
-      (coreWire.material as THREE.MeshBasicMaterial).color.copy(c);
-      (coreFill.material as THREE.MeshBasicMaterial).color.copy(c);
-      (coreGlow.material as THREE.MeshBasicMaterial).color.copy(c);
-      (coreHalo.material as THREE.MeshBasicMaterial).color.copy(c);
-      (hex.material as THREE.MeshBasicMaterial).color.copy(c);
-      crossMat.color.copy(c);
-      tickMat.color.copy(c);
-      sparkMat.color.copy(c);
-      for (const r of rings) (r.material as THREE.MeshBasicMaterial).color.copy(c);
-      for (const a of arcs) (a.material as THREE.MeshBasicMaterial).color.copy(c);
-    };
-
     const animate = () => {
       const t = clock.getElapsedTime();
       const s = stateRef.current;
       const lv = Math.min(1, Math.max(0, levelRef.current));
       target.set(COLORS[s]);
-      current.lerp(target, 0.09);
-      paint(current);
+      current.lerp(target, 0.1);
+      for (const c of colorize) {
+        c.mat.color.copy(current);
+        c.mat.opacity = c.baseOp + lv * 0.15 + (s === "thinking" ? 0.1 : 0);
+      }
+      (core.material as THREE.MeshBasicMaterial).color.copy(current);
+      (coreInner.material as THREE.MeshBasicMaterial).color.copy(current);
 
       const pulse =
         s === "idle"
-          ? 1 + Math.sin(t * 1.7) * 0.035
+          ? 1 + Math.sin(t * 1.5) * 0.02
           : s === "listening"
-            ? 1 + 0.06 + lv * 0.22 + Math.sin(t * 8) * 0.025
+            ? 1 + 0.03 + lv * 0.12
             : s === "thinking"
-              ? 1 + 0.05 + Math.sin(t * 12) * 0.055
-              : 1 + 0.08 + lv * 0.3 + Math.sin(t * 9) * 0.035;
-
+              ? 1 + 0.04 + Math.sin(t * 10) * 0.03
+              : 1 + 0.05 + lv * 0.18;
       root.scale.setScalar(pulse);
 
-      const spin = s === "thinking" ? 1.55 : s === "listening" ? 1.05 : s === "speaking" ? 1.25 : 0.42;
-      rings[0].rotation.z = t * spin * 0.9;
-      rings[1].rotation.z = -t * spin * 0.65;
-      rings[2].rotation.z = t * spin * 0.4;
-      rings[3].rotation.z = -t * spin * 0.55;
-      rings[4].rotation.z = t * spin * 0.25;
-      rings[1].rotation.y = 0.55 + Math.sin(t * 0.45) * 0.35;
-      rings[2].rotation.x = Math.PI / 1.75 + Math.cos(t * 0.4) * 0.25;
-      rings[3].rotation.y = 0.9 + t * 0.12;
+      const spin = s === "thinking" ? 1.3 : s === "listening" ? 0.85 : s === "speaking" ? 1.0 : 0.35;
+      ringPlanes.forEach((g, i) => {
+        g.rotation.z = t * spin * (i % 2 === 0 ? 0.4 : -0.55);
+      });
+      sweep.rotation.z = t * 1.8;
+      hex.rotation.z = -t * 0.25;
+      core.rotation.y = t * 0.6;
+      core.rotation.x = t * 0.25;
+      coreInner.rotation.y = -t * 0.9;
+      scan.rotation.z = t * 2.4;
 
-      arcs[0].rotation.z = t * 2.1;
-      arcs[1].rotation.z = -t * 1.4;
-      arcs[2].rotation.z = t * 0.85;
-      arcs[1].rotation.x = Math.PI / 2 + Math.sin(t * 0.6) * 0.35;
-
-      hex.rotation.z = t * 0.35;
-      coreWire.rotation.y = t * 0.7;
-      coreWire.rotation.x = t * 0.28;
-      coreFill.rotation.y = -t * 0.55;
-      ticks.rotation.z = t * 0.22;
-      sparks.rotation.y = t * 0.6;
-
-      const hot = s === "speaking" || s === "listening";
-      (coreFill.material as THREE.MeshBasicMaterial).opacity = 0.32 + lv * 0.4 + (hot ? 0.15 : 0);
-      (coreGlow.material as THREE.MeshBasicMaterial).opacity = 0.1 + lv * 0.22;
-      (coreHalo.material as THREE.MeshBasicMaterial).opacity = 0.05 + lv * 0.1;
-      sparkMat.opacity = 0.55 + lv * 0.45;
-      (arcs[0].material as THREE.MeshBasicMaterial).opacity =
-        0.55 + (s === "thinking" ? 0.35 : 0.15) + lv * 0.2;
-
-      camera.position.z = 5.6 - lv * 0.25 - (s === "speaking" ? 0.12 : 0);
+      camera.position.z = 6.2 - lv * 0.2;
       camera.lookAt(0, 0, 0);
       renderer.render(scene, camera);
       raf = requestAnimationFrame(animate);
@@ -296,7 +286,7 @@ export function Orb({ state, level = 0 }: Props) {
       cancelAnimationFrame(raf);
       ro.disconnect();
       renderer.dispose();
-      for (const d of disposables) d.dispose?.();
+      trash.forEach((d) => d.dispose());
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
     };
   }, []);

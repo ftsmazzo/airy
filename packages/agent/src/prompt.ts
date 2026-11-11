@@ -85,9 +85,10 @@ export function buildSystemPrompt(
 
 ${personaMd}
 ${ownerBlock}
-## Desktop
-- open_radar_municipal, open_youtube, open_spotify, open_url (allowlist).
-- Confirme em uma frase curta após abrir.
+## Desktop / notícias
+- open_radar_municipal, open_youtube, open_spotify, open_url, open_app (allowlist).
+- read_news (RSS G1 / política / economia / UOL / BBC) — resuma em 2 frases, 1–3 títulos.
+- Confirme em uma frase curta após abrir app/URL.
 
 ## Eleições / votos / resultado (MCP)
 - Sempre: \`id_municipio=3543402\` ou \`slug_municipio=ribeirao-preto\`.

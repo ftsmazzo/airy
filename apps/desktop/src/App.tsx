@@ -239,7 +239,7 @@ export function App() {
     setCaption(
       needsName
         ? "Diga seu nome… (2 palmas cancela)"
-        : "Ouvindo… diga o comando (ou 2 palmas para cancelar)",
+        : "Ouvindo… pode pensar; pausa curta não cancela",
     );
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -314,6 +314,11 @@ export function App() {
     analyser.fftSize = 1024;
     source.connect(analyser);
     const data = new Uint8Array(analyser.fftSize);
+    // Escuta paciente: mic lento + pausa pra pensar não dormem a sessão
+    const MIN_MS = 2800; // não encerra antes disso
+    const SILENCE_MS = 4200; // silêncio após fala (pensar / respirar)
+    const MAX_MS = 28000;
+    const SPEECH_THRESH = 0.045;
     const started = performance.now();
     let heardSpeech = false;
     let silentFor = 0;
@@ -336,13 +341,16 @@ export function App() {
       const now = performance.now();
       const dt = now - last;
       last = now;
-      if (energy > 0.05) {
+      const elapsed = now - started;
+      if (energy > SPEECH_THRESH) {
         heardSpeech = true;
         silentFor = 0;
-      } else if (heardSpeech) {
+      } else if (heardSpeech && elapsed >= MIN_MS) {
         silentFor += dt;
       }
-      if ((heardSpeech && silentFor > 1200) || now - started > 12000) {
+      const silenceDone = heardSpeech && silentFor > SILENCE_MS && elapsed >= MIN_MS;
+      const timedOut = elapsed > MAX_MS;
+      if (silenceDone || timedOut) {
         source.disconnect();
         void ctx.close();
         if (mediaRef.current === rec && rec.state !== "inactive") rec.stop();

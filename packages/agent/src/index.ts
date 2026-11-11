@@ -2,11 +2,13 @@ import { synthesizeSpeech, transcribeAudio } from "@airy/voice";
 import {
   DESKTOP_TOOL_DEFS,
   openAllowedUrl,
+  openNamedApp,
   openRadarMunicipal,
   openSpotify,
   openYoutube,
   type DesktopConfig,
 } from "./desktop.js";
+import { fetchNewsHeadlines, NEWS_TOOL_DEFS } from "./news.js";
 import { McpHttpClient } from "./mcp.js";
 import {
   buildSystemPrompt,
@@ -146,7 +148,7 @@ export class AiryAgent {
   }
 
   private allTools() {
-    return [...DESKTOP_TOOL_DEFS, ...this.mcpToolsOpenAI];
+    return [...DESKTOP_TOOL_DEFS, ...NEWS_TOOL_DEFS, ...this.mcpToolsOpenAI];
   }
 
   private async runDesktopTool(
@@ -162,6 +164,15 @@ export class AiryAgent {
         return openSpotify();
       case "open_url":
         return openAllowedUrl(String(args.url || ""), this.desktop);
+      case "open_app":
+        return openNamedApp(String(args.name || ""));
+      case "read_news": {
+        const news = await fetchNewsHeadlines(
+          String(args.portal || "g1"),
+          Number(args.limit) || 3,
+        );
+        return news.forModel;
+      }
       default:
         return `Tool desktop desconhecida: ${name}`;
     }
@@ -255,7 +266,7 @@ export class AiryAgent {
         }
         toolTrace.push(name);
         let result: string;
-        if (name.startsWith("open_")) {
+        if (name.startsWith("open_") || name === "read_news") {
           result = await this.runDesktopTool(name, args);
         } else {
           result = await this.mcp.callTool(name, args);

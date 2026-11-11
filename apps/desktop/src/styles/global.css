@@ -44,23 +44,24 @@ body,
 .stage::before {
   content: "";
   position: absolute;
-  width: min(70vmin, 720px);
-  height: min(70vmin, 720px);
+  width: min(78vmin, 820px);
+  height: min(78vmin, 820px);
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(62, 203, 255, 0.16) 0%, transparent 68%);
-  filter: blur(24px);
+  /* glow mínimo — HUD, não planeta */
+  background: radial-gradient(circle, rgba(51, 207, 255, 0.06) 0%, transparent 62%);
+  filter: blur(16px);
   pointer-events: none;
-  animation: glow 3.6s ease-in-out infinite;
+  animation: glow 4.2s ease-in-out infinite;
 }
 
 .stage[data-state="listening"]::before {
-  background: radial-gradient(circle, rgba(106, 240, 255, 0.22) 0%, transparent 68%);
+  background: radial-gradient(circle, rgba(106, 247, 255, 0.09) 0%, transparent 62%);
 }
 .stage[data-state="thinking"]::before {
-  background: radial-gradient(circle, rgba(122, 184, 255, 0.22) 0%, transparent 68%);
+  background: radial-gradient(circle, rgba(138, 180, 255, 0.09) 0%, transparent 62%);
 }
 .stage[data-state="speaking"]::before {
-  background: radial-gradient(circle, rgba(92, 255, 210, 0.22) 0%, transparent 68%);
+  background: radial-gradient(circle, rgba(93, 255, 213, 0.09) 0%, transparent 62%);
 }
 
 @keyframes glow {

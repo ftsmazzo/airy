@@ -111,6 +111,19 @@ const LEGACY_EXPENSIVE_MODELS = new Set([
 export function loadSettings(): SettingsForm {
   const disk = readDisk();
   const pub = { ...DEFAULT_PUBLIC, ...(disk?.public || {}) };
+  // Migra Sonnet/Opus salvos → Haiku 5.5 (sem chamar saveSettings: evita recursão)
+  if (LEGACY_EXPENSIVE_MODELS.has(pub.openrouterModel)) {
+    pub.openrouterModel = DEFAULT_PUBLIC.openrouterModel;
+    try {
+      writeDisk({
+        version: 1,
+        public: pub,
+        secrets: disk?.secrets || {},
+      });
+    } catch {
+      /* memória já usa o default econômico nesta sessão */
+    }
+  }
   const secrets: SecretSettings = {
     openrouterApiKey: "",
     elevenApiKey: "",
@@ -119,17 +132,7 @@ export function loadSettings(): SettingsForm {
   for (const k of SECRET_KEYS) {
     secrets[k] = decrypt(disk?.secrets?.[k] || "");
   }
-  const merged: SettingsForm = { ...pub, ...secrets };
-  // Migra Sonnet/Opus salvos no cofre para Haiku 5.5 (muito mais barato, tools ok)
-  if (LEGACY_EXPENSIVE_MODELS.has(merged.openrouterModel)) {
-    merged.openrouterModel = DEFAULT_PUBLIC.openrouterModel;
-    try {
-      saveSettings({ openrouterModel: merged.openrouterModel });
-    } catch {
-      /* ignora se disco falhar; o default em memória já vale nesta sessão */
-    }
-  }
-  return merged;
+  return { ...pub, ...secrets };
 }
 
 export function saveSettings(partial: Partial<SettingsForm>): SettingsForm {

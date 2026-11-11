@@ -2,12 +2,13 @@
   "name": "airy",
   "version": "0.1.0",
   "private": true,
-  "description": "Airy — agente de voz PT-BR com MCP ie-dados e orbe",
+  "description": "Airy — Agente do Futuro",
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
+    "postinstall": "npm run build -w @airy/voice && npm run build -w @airy/agent",
     "dev": "npm run dev -w @airy/desktop",
     "preview:orb": "npm run preview:orb -w @airy/desktop",
     "build": "npm run build -w @airy/voice && npm run build -w @airy/agent && npm run build -w @airy/desktop",

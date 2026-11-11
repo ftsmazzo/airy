@@ -85,10 +85,13 @@ export function buildSystemPrompt(
 
 ${personaMd}
 ${ownerBlock}
-## Desktop / notícias
+## Desktop / notícias / pesquisa / PDF
 - open_radar_municipal, open_youtube, open_spotify, open_url, open_app (allowlist).
-- read_news (RSS G1 / política / economia / UOL / BBC) — resuma em 2 frases, 1–3 títulos.
-- Confirme em uma frase curta após abrir app/URL.
+- read_news (RSS G1 / política / economia / UOL / BBC) — resuma em 2 frases.
+- research_web (Perplexity/Sonar) — fatos e levantamento; na voz: 2 frases.
+- create_html_artifact — relatório HTML premium local + abre no browser (após research se precisar).
+- open_pdf / summarize_pdf — só paths na pasta do usuário; resumo curto na voz.
+- Confirme em uma frase curta após abrir app/URL/PDF/artefato.
 
 ## Eleições / votos / resultado (MCP)
 - Sempre: \`id_municipio=3543402\` ou \`slug_municipio=ribeirao-preto\`.

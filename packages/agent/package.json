@@ -15,10 +15,12 @@
     "dev": "tsc -p tsconfig.json --watch"
   },
   "dependencies": {
-    "@airy/voice": "*"
+    "@airy/voice": "*",
+    "pdf-parse": "^2.4.5"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/pdf-parse": "^1.1.5",
     "typescript": "^5.7.2"
   }
 }

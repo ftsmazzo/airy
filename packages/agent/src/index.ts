@@ -9,6 +9,9 @@ import {
   type DesktopConfig,
 } from "./desktop.js";
 import { fetchNewsHeadlines, NEWS_TOOL_DEFS } from "./news.js";
+import { ARTIFACT_TOOL_DEFS, createHtmlArtifact } from "./artifacts.js";
+import { openPdf, PDF_TOOL_DEFS, summarizePdf } from "./pdf.js";
+import { RESEARCH_TOOL_DEFS, researchWeb } from "./research.js";
 import { McpHttpClient } from "./mcp.js";
 import {
   buildSystemPrompt,
@@ -22,6 +25,8 @@ import { isStopIntent, stopAck } from "./session.js";
 export type AiryEnv = {
   openrouterApiKey: string;
   openrouterModel: string;
+  /** Default perplexity/sonar — pesquisa web pontual */
+  researchModel?: string;
   elevenApiKey: string;
   elevenVoiceId: string;
   elevenTtsModel?: string;
@@ -35,6 +40,19 @@ export type AiryEnv = {
   personaPath?: string;
   ownerName?: string;
 };
+
+const LOCAL_TOOL_NAMES = new Set([
+  "open_radar_municipal",
+  "open_youtube",
+  "open_spotify",
+  "open_url",
+  "open_app",
+  "open_pdf",
+  "read_news",
+  "research_web",
+  "create_html_artifact",
+  "summarize_pdf",
+]);
 
 function numEnv(value: string | undefined, fallback: number): number {
   if (value == null || value === "") return fallback;
@@ -52,6 +70,12 @@ function confirmFromTools(trace: string[], results: string[]): string {
   if (trace.includes("read_news")) {
     const last = results[results.length - 1] || "";
     return last.slice(0, 180) || "Peguei as manchetes.";
+  }
+  if (trace.includes("create_html_artifact")) return "Relatório HTML aberto.";
+  if (trace.includes("open_pdf")) return "PDF aberto.";
+  if (trace.includes("summarize_pdf") || trace.includes("research_web")) {
+    const last = results[results.length - 1] || "";
+    return last.slice(0, 220) || "Pronto.";
   }
   const last = results[results.length - 1] || "";
   if (/aberto|abri|ok/i.test(last)) return "Pronto.";
@@ -86,6 +110,7 @@ export function loadEnvFromProcess(): AiryEnv {
   return {
     openrouterApiKey: sanitizeSecret(e.OPENROUTER_API_KEY),
     openrouterModel: clean(e.OPENROUTER_MODEL) || "anthropic/claude-haiku-5.5",
+    researchModel: clean(e.AIRY_RESEARCH_MODEL) || "perplexity/sonar",
     elevenApiKey: sanitizeSecret(e.ELEVENLABS_API_KEY),
     elevenVoiceId: clean(e.ELEVENLABS_VOICE_ID),
     // Prefer ELEVENLABS_MODEL_ID (mesmo nome da conta Pro); fallback legado TTS_MODEL
@@ -164,10 +189,17 @@ export class AiryAgent {
   }
 
   private allTools() {
-    return [...DESKTOP_TOOL_DEFS, ...NEWS_TOOL_DEFS, ...this.mcpToolsOpenAI];
+    return [
+      ...DESKTOP_TOOL_DEFS,
+      ...NEWS_TOOL_DEFS,
+      ...RESEARCH_TOOL_DEFS,
+      ...ARTIFACT_TOOL_DEFS,
+      ...PDF_TOOL_DEFS,
+      ...this.mcpToolsOpenAI,
+    ];
   }
 
-  private async runDesktopTool(
+  private async runLocalTool(
     name: string,
     args: Record<string, unknown>,
   ): Promise<string> {
@@ -182,6 +214,8 @@ export class AiryAgent {
         return openAllowedUrl(String(args.url || ""), this.desktop);
       case "open_app":
         return openNamedApp(String(args.name || ""));
+      case "open_pdf":
+        return openPdf(String(args.path || ""));
       case "read_news": {
         const news = await fetchNewsHeadlines(
           String(args.portal || "g1"),
@@ -189,8 +223,34 @@ export class AiryAgent {
         );
         return news.forModel;
       }
+      case "research_web":
+        return researchWeb(String(args.query || ""), {
+          openrouterApiKey: this.env.openrouterApiKey,
+          researchModel: this.env.researchModel,
+        });
+      case "create_html_artifact":
+        return createHtmlArtifact({
+          title: String(args.title || ""),
+          subtitle: args.subtitle ? String(args.subtitle) : undefined,
+          summary: String(args.summary || ""),
+          sections: Array.isArray(args.sections)
+            ? (args.sections as Array<{ heading: string; body: string }>)
+            : [],
+          sources: Array.isArray(args.sources)
+            ? args.sources.map(String)
+            : [],
+        });
+      case "summarize_pdf":
+        return summarizePdf(
+          String(args.path || ""),
+          {
+            openrouterApiKey: this.env.openrouterApiKey,
+            openrouterModel: this.env.openrouterModel,
+          },
+          args.focus ? String(args.focus) : undefined,
+        );
       default:
-        return `Tool desktop desconhecida: ${name}`;
+        return `Tool local desconhecida: ${name}`;
     }
   }
 
@@ -288,8 +348,8 @@ export class AiryAgent {
         }
         toolTrace.push(name);
         let result: string;
-        if (name.startsWith("open_") || name === "read_news") {
-          result = await this.runDesktopTool(name, args);
+        if (LOCAL_TOOL_NAMES.has(name)) {
+          result = await this.runLocalTool(name, args);
         } else {
           result = await this.mcp.callTool(name, args);
         }

@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  dialog,
   globalShortcut,
   ipcMain,
   screen,
@@ -26,6 +27,12 @@ import {
   settingsToAiryEnv,
   type SettingsForm,
 } from "./secureConfig.js";
+import {
+  defaultInboxPath,
+  ensureInboxDir,
+  startInboxWatch,
+  stopInboxWatch,
+} from "./inboxWatch.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -50,6 +57,17 @@ let bootEnv: AiryEnv = loadEnvFromProcess();
 function resolveEnv(): AiryEnv {
   const settings = loadSettings();
   return settingsToAiryEnv(settings, bootEnv);
+}
+
+function applyInboxWatch(): void {
+  const s = loadSettings();
+  const path = s.inboxPath?.trim() || defaultInboxPath();
+  if (s.inboxEnabled) ensureInboxDir(path);
+  startInboxWatch(mainWindow, {
+    enabled: Boolean(s.inboxEnabled),
+    path,
+    autoSummarizePdf: Boolean(s.inboxAutoSummarizePdf),
+  });
 }
 
 async function ensureMicAccess(): Promise<void> {
@@ -120,7 +138,14 @@ function createWindow() {
     mainWindow.maximize();
     mainWindow.setMinimumSize(900, 600);
   }
-  mainWindow.once("ready-to-show", () => mainWindow?.show());
+  mainWindow.once("ready-to-show", () => {
+    mainWindow?.show();
+    applyInboxWatch();
+  });
+  mainWindow.on("closed", () => {
+    stopInboxWatch();
+    mainWindow = null;
+  });
 
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
@@ -236,11 +261,24 @@ app.whenReady().then(async () => {
       saveSettings({ ...cur, ...clean });
       resetAgent();
       await getAgent();
+      applyInboxWatch();
       return { ok: true, settings: settingsPublicView(loadSettings()) };
     } catch (e) {
       return { ok: false, error: (e as Error).message, settings: settingsPublicView(loadSettings()) };
     }
   });
+
+  ipcMain.handle("airy:pick-folder", async () => {
+    const res = await dialog.showOpenDialog(mainWindow!, {
+      title: "Pasta vigiada da Airy",
+      properties: ["openDirectory", "createDirectory"],
+      defaultPath: loadSettings().inboxPath || defaultInboxPath(),
+    });
+    if (res.canceled || !res.filePaths[0]) return { ok: false as const };
+    return { ok: true as const, path: res.filePaths[0] };
+  });
+
+  ipcMain.handle("airy:default-inbox-path", async () => defaultInboxPath());
 
   const refocusAiry = () => {
     // No Mac, `open` do Radar/URL rouba o foco pro browser — parece que o Airy “travou”.
@@ -374,6 +412,7 @@ app.whenReady().then(async () => {
 });
 
 app.on("will-quit", () => {
+  stopInboxWatch();
   globalShortcut.unregisterAll();
 });
 

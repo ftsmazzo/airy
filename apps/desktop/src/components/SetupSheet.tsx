@@ -18,6 +18,9 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
   const [openrouterApiKey, setOpenrouterApiKey] = useState("");
   const [elevenApiKey, setElevenApiKey] = useState("");
   const [mcpToken, setMcpToken] = useState("");
+  const [inboxEnabled, setInboxEnabled] = useState(true);
+  const [inboxPath, setInboxPath] = useState("");
+  const [inboxAutoSummarizePdf, setInboxAutoSummarizePdf] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [view, setView] = useState<AirySettingsView | null>(initial || null);
@@ -35,6 +38,13 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
       setOpenrouterApiKey("");
       setElevenApiKey("");
       setMcpToken("");
+      setInboxEnabled(s.inboxEnabled !== false);
+      const fallback =
+        s.inboxPath ||
+        (await window.airy?.defaultInboxPath?.()) ||
+        "";
+      setInboxPath(fallback);
+      setInboxAutoSummarizePdf(Boolean(s.inboxAutoSummarizePdf));
       setMsg(
         s.encryption
           ? "Keys ficam no cofre do Mac/Windows (não no Git)."
@@ -42,6 +52,11 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
       );
     })();
   }, [open, initial]);
+
+  const pickInbox = async () => {
+    const res = await window.airy?.pickFolder?.();
+    if (res?.ok) setInboxPath(res.path);
+  };
 
   const save = async () => {
     if (!window.airy?.saveSettings) return;
@@ -53,6 +68,9 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
         radarUrl,
         openrouterModel: openrouterModel.trim() || "anthropic/claude-haiku-5.5",
         elevenVoiceId,
+        inboxEnabled,
+        inboxPath: inboxPath.trim(),
+        inboxAutoSummarizePdf,
       };
       if (openrouterApiKey.trim()) payload.openrouterApiKey = openrouterApiKey.trim();
       if (elevenApiKey.trim()) payload.elevenApiKey = elevenApiKey.trim();
@@ -80,12 +98,12 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
       <div className="setup-sheet" onClick={(e) => e.stopPropagation()}>
         <h2>Ajustes Airy</h2>
         <p className="setup-lead">
-          Sem banco remoto. Segredos no Keychain/DPAPI deste computador.
-          Nome e Radar são preferências locais.
+          Assistente pessoal neste PC. Segredos no Keychain/DPAPI. MCP continua
+          disponível quando você pedir dados públicos.
         </p>
 
         <label>
-          Seu nome (editável — ou deixe vazio p/ ela perguntar na 1ª palmada)
+          Seu nome (editável — ou deixe vazio p/ ela perguntar na 1ª vez)
           <input
             value={ownerName}
             onChange={(e) => setOwnerName(e.target.value)}
@@ -115,6 +133,39 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
             </option>
           </select>
         </label>
+
+        <fieldset className="setup-fieldset">
+          <legend>Pasta vigiada</legend>
+          <label className="setup-check">
+            <input
+              type="checkbox"
+              checked={inboxEnabled}
+              onChange={(e) => setInboxEnabled(e.target.checked)}
+            />
+            Avisar quando entrar arquivo novo
+          </label>
+          <div className="setup-path-row">
+            <input
+              value={inboxPath}
+              readOnly
+              placeholder="Escolha a pasta…"
+              title={inboxPath}
+            />
+            <button type="button" className="ghost" onClick={() => void pickInbox()}>
+              Escolher pasta…
+            </button>
+          </div>
+          <label className="setup-check">
+            <input
+              type="checkbox"
+              checked={inboxAutoSummarizePdf}
+              onChange={(e) => setInboxAutoSummarizePdf(e.target.checked)}
+              disabled={!inboxEnabled}
+            />
+            Resumir PDF automaticamente (gasta API)
+          </label>
+        </fieldset>
+
         <label>
           ElevenLabs Voice ID
           <input value={elevenVoiceId} onChange={(e) => setElevenVoiceId(e.target.value)} />

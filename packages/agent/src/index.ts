@@ -12,6 +12,14 @@ import { fetchNewsHeadlines, NEWS_TOOL_DEFS } from "./news.js";
 import { ARTIFACT_TOOL_DEFS, createHtmlArtifact } from "./artifacts.js";
 import { openPdf, PDF_TOOL_DEFS, summarizePdf } from "./pdf.js";
 import { RESEARCH_TOOL_DEFS, researchWeb } from "./research.js";
+import {
+  forgetMemory,
+  MEMORY_TOOL_DEFS,
+  memoryPromptBlock,
+  recallMemory,
+  rememberFact,
+} from "./memory.js";
+import { NOTES_TOOL_DEFS, saveNote } from "./notes.js";
 import { McpHttpClient } from "./mcp.js";
 import {
   buildSystemPrompt,
@@ -52,6 +60,10 @@ const LOCAL_TOOL_NAMES = new Set([
   "research_web",
   "create_html_artifact",
   "summarize_pdf",
+  "remember_fact",
+  "recall_memory",
+  "forget_memory",
+  "save_note",
 ]);
 
 function numEnv(value: string | undefined, fallback: number): number {
@@ -73,7 +85,14 @@ function confirmFromTools(trace: string[], results: string[]): string {
   }
   if (trace.includes("create_html_artifact")) return "Relatório HTML aberto.";
   if (trace.includes("open_pdf")) return "PDF aberto.";
-  if (trace.includes("summarize_pdf") || trace.includes("research_web")) {
+  if (trace.includes("save_note")) return "Anotei.";
+  if (trace.includes("remember_fact")) return "Lembrei.";
+  if (trace.includes("forget_memory")) return "Ok, esqueci.";
+  if (
+    trace.includes("summarize_pdf") ||
+    trace.includes("research_web") ||
+    trace.includes("recall_memory")
+  ) {
     const last = results[results.length - 1] || "";
     return last.slice(0, 220) || "Pronto.";
   }
@@ -158,11 +177,17 @@ export class AiryAgent {
       persona.text,
       loadIeDadosSkill(),
       this.env.ownerName || "",
+      memoryPromptBlock(12),
     );
     if (this.history[0]?.role === "system") {
       this.history[0] = { role: "system", content: this.systemPrompt };
     }
     return { path: persona.path };
+  }
+
+  /** Atualiza o bloco de memória no system prompt (após remember/forget). */
+  refreshMemoryPrompt(): void {
+    this.reloadPersona();
   }
 
   getPersonaPath(): string {
@@ -195,6 +220,8 @@ export class AiryAgent {
       ...RESEARCH_TOOL_DEFS,
       ...ARTIFACT_TOOL_DEFS,
       ...PDF_TOOL_DEFS,
+      ...MEMORY_TOOL_DEFS,
+      ...NOTES_TOOL_DEFS,
       ...this.mcpToolsOpenAI,
     ];
   }
@@ -249,6 +276,23 @@ export class AiryAgent {
           },
           args.focus ? String(args.focus) : undefined,
         );
+      case "remember_fact": {
+        const out = rememberFact(
+          String(args.text || ""),
+          Array.isArray(args.tags) ? args.tags.map(String) : [],
+        );
+        this.refreshMemoryPrompt();
+        return out;
+      }
+      case "recall_memory":
+        return recallMemory(String(args.query || ""), Number(args.limit) || 8);
+      case "forget_memory": {
+        const out = forgetMemory(String(args.query || ""));
+        this.refreshMemoryPrompt();
+        return out;
+      }
+      case "save_note":
+        return saveNote(String(args.title || ""), String(args.body || ""));
       default:
         return `Tool local desconhecida: ${name}`;
     }

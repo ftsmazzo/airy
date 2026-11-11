@@ -301,6 +301,58 @@ body,
   outline: none;
 }
 
+.setup-fieldset {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 10px 12px 12px;
+  margin: 0 0 12px;
+}
+
+.setup-fieldset legend {
+  padding: 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cyan);
+}
+
+.setup-check {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px !important;
+  grid-template-columns: none !important;
+}
+
+.setup-check input {
+  width: auto;
+  margin: 0;
+}
+
+.setup-path-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.setup-path-row input {
+  width: 100%;
+  opacity: 0.9;
+}
+
+.setup-path-row button {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--fg);
+}
+
 .setup-actions {
   display: flex;
   justify-content: flex-end;

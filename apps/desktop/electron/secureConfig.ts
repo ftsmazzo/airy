@@ -21,6 +21,10 @@ export type PublicSettings = {
   elevenStyle: number;
   elevenSpeed: number;
   mcpBaseUrl: string;
+  /** Pasta vigiada (assistente pessoal) */
+  inboxEnabled: boolean;
+  inboxPath: string;
+  inboxAutoSummarizePdf: boolean;
 };
 
 export type SecretSettings = {
@@ -54,6 +58,9 @@ const DEFAULT_PUBLIC: PublicSettings = {
   elevenStyle: 0,
   elevenSpeed: 1,
   mcpBaseUrl: "https://ie-dados-mcp.kxryyk.easypanel.host",
+  inboxEnabled: true,
+  inboxPath: "",
+  inboxAutoSummarizePdf: false,
 };
 
 function configPath(): string {
@@ -159,6 +166,9 @@ export function saveSettings(partial: Partial<SettingsForm>): SettingsForm {
     elevenStyle: next.elevenStyle,
     elevenSpeed: next.elevenSpeed,
     mcpBaseUrl: next.mcpBaseUrl,
+    inboxEnabled: Boolean(next.inboxEnabled),
+    inboxPath: next.inboxPath || "",
+    inboxAutoSummarizePdf: Boolean(next.inboxAutoSummarizePdf),
   };
 
   writeDisk({ version: 1, public: pub, secrets });
@@ -248,5 +258,8 @@ export function settingsPublicView(s: SettingsForm) {
     hasOpenrouterApiKey: Boolean(s.openrouterApiKey),
     hasElevenApiKey: Boolean(s.elevenApiKey),
     hasMcpToken: Boolean(s.mcpToken),
+    inboxEnabled: Boolean(s.inboxEnabled),
+    inboxPath: s.inboxPath || "",
+    inboxAutoSummarizePdf: Boolean(s.inboxAutoSummarizePdf),
   };
 }

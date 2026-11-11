@@ -45,4 +45,24 @@ contextBridge.exposeInMainWorld("airy", {
       audioBase64: string | null;
       settings?: Record<string, unknown>;
     }>,
+  pickFolder: () =>
+    ipcRenderer.invoke("airy:pick-folder") as Promise<
+      { ok: true; path: string } | { ok: false }
+    >,
+  defaultInboxPath: () =>
+    ipcRenderer.invoke("airy:default-inbox-path") as Promise<string>,
+  onInboxFile: (
+    cb: (payload: {
+      path: string;
+      name: string;
+      autoSummarizePdf: boolean;
+    }) => void,
+  ) => {
+    const handler = (
+      _evt: unknown,
+      payload: { path: string; name: string; autoSummarizePdf: boolean },
+    ) => cb(payload);
+    ipcRenderer.on("airy:inbox-file", handler);
+    return () => ipcRenderer.removeListener("airy:inbox-file", handler);
+  },
 });

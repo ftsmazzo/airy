@@ -25,6 +25,9 @@ export type AirySettingsView = {
   hasOpenrouterApiKey: boolean;
   hasElevenApiKey: boolean;
   hasMcpToken: boolean;
+  inboxEnabled: boolean;
+  inboxPath: string;
+  inboxAutoSummarizePdf: boolean;
 };
 
 export type AiryApi = {
@@ -59,6 +62,15 @@ export type AiryApi = {
     audioBase64: string | null;
     settings?: AirySettingsView;
   }>;
+  pickFolder: () => Promise<{ ok: true; path: string } | { ok: false }>;
+  defaultInboxPath: () => Promise<string>;
+  onInboxFile: (
+    cb: (payload: {
+      path: string;
+      name: string;
+      autoSummarizePdf: boolean;
+    }) => void,
+  ) => () => void;
 };
 
 declare global {

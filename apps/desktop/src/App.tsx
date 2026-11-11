@@ -424,6 +424,26 @@ export function App() {
     };
   }, [ready]);
 
+  // Pasta vigiada: arquivo novo → caption (+ resumo PDF se ligado nos Ajustes)
+  useEffect(() => {
+    if (!ready || !window.airy?.onInboxFile) return;
+    return window.airy.onInboxFile((payload) => {
+      setCaption(`Inbox · entrou ${payload.name}`);
+      if (
+        payload.autoSummarizePdf &&
+        payload.name.toLowerCase().endsWith(".pdf") &&
+        sessionRef.current === "dormant" &&
+        !speakingRef.current
+      ) {
+        void runTurnRef.current(() =>
+          window.airy!.textTurn(
+            `Resuma este PDF agora (caminho: ${payload.path}). Use summarize_pdf.`,
+          ),
+        );
+      }
+    });
+  }, [ready]);
+
   // Wake por nome: “Airy, abre o radar” / “faz isso Airy” (passivo, só dormindo)
   useEffect(() => {
     if (!ready) return;
@@ -546,7 +566,7 @@ export function App() {
         </div>
 
         <div className="hint-bar">
-          “airy …” / espaço / palmas · esc ou “para” dormem · , ajustes · / texto
+          “airy …” · anota/lembra · inbox · esc dorme · , ajustes
         </div>
       </div>
 

@@ -65,7 +65,15 @@ npm run dev
 - `npm run dev` = app fullscreen com voz + MCP.
 
 Na **primeira** fala ou 2 palmas, o macOS pede **Microfone** → Permitir.  
-**F11** alterna fullscreen. **/** abre texto opcional. Uso principal: **2 palmas** ou **Espaço**.
+**F11** alterna fullscreen. **/** abre texto opcional.
+
+### Sessão (acordar / dormir)
+- **Dormindo** por padrão (não interfere sozinha).
+- **2 palmas** ou **Espaço** → acorda e ouve o comando.
+- De novo **2 palmas** / **Espaço** / **Esc** enquanto ouve → cancela e dorme.
+- Na fala: “para”, “chega”, “desliga”, “dorme” → ela confirma e dorme.
+- Depois de cada resposta → volta a **dormir** (precisa acordar de novo).
+- No `.env`: `AIRY_OWNER_NAME=Fred` → “Bom dia, Fred” / “Radar aberto, Fred” quando couber.
 
 ### Checklist de aceite (5 min)
 

@@ -14,6 +14,7 @@ import {
   loadIeDadosSkill,
   loadPersona,
 } from "./prompt.js";
+import { isStopIntent, stopAck } from "./session.js";
 
 export type AiryEnv = {
   openrouterApiKey: string;
@@ -29,6 +30,7 @@ export type AiryEnv = {
   mcpBaseUrl: string;
   radarUrl: string;
   personaPath?: string;
+  ownerName?: string;
 };
 
 function numEnv(value: string | undefined, fallback: number): number {
@@ -81,6 +83,7 @@ export function loadEnvFromProcess(): AiryEnv {
       clean(e.MCP_BASE_URL) || "https://ie-dados-mcp.kxryyk.easypanel.host",
     radarUrl: clean(e.AIRY_RADAR_URL),
     personaPath: clean(e.AIRY_PERSONA_PATH),
+    ownerName: clean(e.AIRY_OWNER_NAME),
   };
 }
 
@@ -107,7 +110,11 @@ export class AiryAgent {
   reloadPersona(): { path: string } {
     const persona = loadPersona(this.env.personaPath);
     this.personaPath = persona.path;
-    this.systemPrompt = buildSystemPrompt(persona.text, loadIeDadosSkill());
+    this.systemPrompt = buildSystemPrompt(
+      persona.text,
+      loadIeDadosSkill(),
+      this.env.ownerName || "",
+    );
     if (this.history[0]?.role === "system") {
       this.history[0] = { role: "system", content: this.systemPrompt };
     }
@@ -187,8 +194,37 @@ export class AiryAgent {
     return { message: data.choices[0].message };
   }
 
+  private async speak(text: string): Promise<Buffer | null> {
+    const clipped = clipForSpeech(text);
+    if (!this.env.elevenVoiceId || !clipped) return null;
+    try {
+      return await synthesizeSpeech(clipped, {
+        apiKey: this.env.elevenApiKey,
+        voiceId: this.env.elevenVoiceId,
+        modelId: this.env.elevenTtsModel,
+        stability: this.env.elevenStability,
+        similarity: this.env.elevenSimilarity,
+        style: this.env.elevenStyle,
+        speed: this.env.elevenSpeed,
+      });
+    } catch {
+      return null;
+    }
+  }
+
   async handleText(userText: string): Promise<TurnResult> {
     const toolTrace: string[] = [];
+
+    if (isStopIntent(userText)) {
+      const assistantText = stopAck(this.env.ownerName);
+      return {
+        userText,
+        assistantText,
+        audioMp3: await this.speak(assistantText),
+        toolTrace: ["session_stop"],
+      };
+    }
+
     if (!this.history.length) {
       this.history.push({ role: "system", content: this.systemPrompt });
     }
@@ -242,22 +278,8 @@ export class AiryAgent {
       ];
     }
 
-    let audioMp3: Buffer | null = null;
-    if (this.env.elevenVoiceId) {
-      try {
-        audioMp3 = await synthesizeSpeech(finalText, {
-          apiKey: this.env.elevenApiKey,
-          voiceId: this.env.elevenVoiceId,
-          modelId: this.env.elevenTtsModel,
-          stability: this.env.elevenStability,
-          similarity: this.env.elevenSimilarity,
-          style: this.env.elevenStyle,
-          speed: this.env.elevenSpeed,
-        });
-      } catch (e) {
-        toolTrace.push(`tts_error:${(e as Error).message}`);
-      }
-    }
+    const audioMp3 = await this.speak(finalText);
+    if (!audioMp3 && this.env.elevenVoiceId) toolTrace.push("tts_error");
 
     return {
       userText,

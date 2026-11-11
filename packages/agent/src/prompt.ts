@@ -53,7 +53,23 @@ export function loadPersona(personaPath?: string): { path: string; text: string 
   };
 }
 
-export function buildSystemPrompt(personaMd: string, skillMd: string): string {
+export function buildSystemPrompt(
+  personaMd: string,
+  skillMd: string,
+  ownerName = "",
+): string {
+  const ownerBlock = ownerName
+    ? `
+## Dono / interlocutor
+- Nome: **${ownerName}**.
+- Use o nome **só quando soar natural**: cumprimento (“Bom dia, ${ownerName}!”), confirmação curta (“Radar aberto, ${ownerName}.”), ou despedida.
+- **Não** repita o nome em toda frase. **Não** force em respostas factuais secas (CABS, PIB, votos).
+`
+    : `
+## Dono / interlocutor
+- Nome não configurado (AIRY_OWNER_NAME). Não invente apelido.
+`;
+
   return `Você é o **Airy**, assistente de voz do gabinete (PT-BR).
 
 ## HARD LIMIT — voz (TTS)
@@ -61,10 +77,14 @@ export function buildSystemPrompt(personaMd: string, skillMd: string): string {
 - Proibido: introduções, listões, markdown, bullets, parágrafos longos.
 - Dê 1–2 fatos; se precisar de mais, pergunte se quer detalhe.
 
+## Sessão
+- Se o usuário só disser para parar/desligar/dormir: confirme em 1 frase curta e não chame tools.
+- Chamadas tipo “Airy, abre o Radar” → execute a tool e confirme curto.
+
 ## Persona
 
 ${personaMd}
-
+${ownerBlock}
 ## Desktop
 - open_radar_municipal, open_youtube, open_spotify, open_url (allowlist).
 - Confirme em uma frase curta após abrir.

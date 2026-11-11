@@ -58,6 +58,8 @@ npm run dev
 
 Desktop com orbe vivo, agente de conversa, voz e persona editável em `persona/AIRY_PERSONA.md`.
 
+**Extras:** pesquisa web (Perplexity/Sonar), artefato HTML em `~/Airy/artifacts`, abrir/resumir PDF na pasta do usuário. Agenda e Cursor ficam pra depois.
+
 ## Repo
 
 https://github.com/ftsmazzo/airy

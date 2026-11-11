@@ -42,6 +42,22 @@ function numEnv(value: string | undefined, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+/** Confirmação local quando o LLM abre algo e não devolve texto. */
+function confirmFromTools(trace: string[], results: string[]): string {
+  if (trace.includes("open_radar_municipal")) return "Radar aberto.";
+  if (trace.includes("open_youtube")) return "YouTube aberto.";
+  if (trace.includes("open_spotify")) return "Spotify aberto.";
+  if (trace.includes("open_app")) return "App aberto.";
+  if (trace.includes("open_url")) return "Pronto, abri aqui.";
+  if (trace.includes("read_news")) {
+    const last = results[results.length - 1] || "";
+    return last.slice(0, 180) || "Peguei as manchetes.";
+  }
+  const last = results[results.length - 1] || "";
+  if (/aberto|abri|ok/i.test(last)) return "Pronto.";
+  return last.slice(0, 160) || "Pronto.";
+}
+
 export type TurnResult = {
   userText: string;
   assistantText: string;
@@ -178,9 +194,11 @@ export class AiryAgent {
     }
   }
 
-  private async chatCompletion(messages: ChatMessage[]): Promise<{
-    message: ChatMessage;
-  }> {
+  private async chatCompletion(
+    messages: ChatMessage[],
+    opts?: { tools?: boolean },
+  ): Promise<{ message: ChatMessage }> {
+    const useTools = opts?.tools !== false;
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -192,9 +210,10 @@ export class AiryAgent {
       body: JSON.stringify({
         model: this.env.openrouterModel,
         messages,
-        tools: this.allTools(),
-        tool_choice: "auto",
         temperature: 0.3,
+        ...(useTools
+          ? { tools: this.allTools(), tool_choice: "auto" }
+          : { tool_choice: "none" }),
       }),
     });
     if (!res.ok) {
@@ -204,7 +223,7 @@ export class AiryAgent {
     const data = (await res.json()) as {
       choices: Array<{ message: ChatMessage }>;
     };
-    return { message: data.choices[0].message };
+    return { message: data.choices[0]?.message || { role: "assistant", content: "" } };
   }
 
   private async speak(text: string): Promise<Buffer | null> {
@@ -245,14 +264,17 @@ export class AiryAgent {
 
     let guard = 0;
     let finalText = "";
+    const toolResults: string[] = [];
 
     while (guard++ < 8) {
       const { message } = await this.chatCompletion(this.history);
       this.history.push(message);
 
       const calls = message.tool_calls || [];
+      const content = (message.content || "").trim();
+      if (content) finalText = content;
+
       if (!calls.length) {
-        finalText = (message.content || "").trim();
         break;
       }
 
@@ -271,6 +293,7 @@ export class AiryAgent {
         } else {
           result = await this.mcp.callTool(name, args);
         }
+        toolResults.push(result);
         this.history.push({
           role: "tool",
           tool_call_id: call.id,
@@ -280,7 +303,22 @@ export class AiryAgent {
       }
     }
 
-    if (!finalText) finalText = "Não consegui montar uma resposta agora.";
+    // Modelos às vezes fecham o turno de tool com content vazio (comum após open_*).
+    if (!finalText && toolTrace.length) {
+      try {
+        this.history.push({
+          role: "user",
+          content: "Confirme em UMA frase curta o que acabou de fazer. Sem tools.",
+        });
+        const { message } = await this.chatCompletion(this.history, { tools: false });
+        this.history.push(message);
+        finalText = (message.content || "").trim();
+      } catch {
+        /* cai no fallback local */
+      }
+    }
+
+    if (!finalText) finalText = confirmFromTools(toolTrace, toolResults);
     finalText = clipForSpeech(finalText);
 
     // evita histórico infinito

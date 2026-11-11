@@ -242,20 +242,36 @@ app.whenReady().then(async () => {
     }
   });
 
+  const refocusAiry = () => {
+    // No Mac, `open` do Radar/URL rouba o foco pro browser — parece que o Airy “travou”.
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  };
+
   ipcMain.handle("airy:text-turn", async (_evt, text: string) => {
-    const a = await getAgent();
-    const turn = await a.handleText(String(text || ""));
-    return packTurn(turn);
+    try {
+      const a = await getAgent();
+      const turn = await a.handleText(String(text || ""));
+      return packTurn(turn);
+    } finally {
+      refocusAiry();
+    }
   });
 
   ipcMain.handle(
     "airy:voice-turn",
     async (_evt, payload: { audioBase64: string; filename: string }) => {
-      await ensureMicAccess();
-      const a = await getAgent();
-      const buf = Buffer.from(payload.audioBase64, "base64");
-      const turn = await a.handleAudio(buf, payload.filename || "audio.webm");
-      return packTurn(turn);
+      try {
+        await ensureMicAccess();
+        const a = await getAgent();
+        const buf = Buffer.from(payload.audioBase64, "base64");
+        const turn = await a.handleAudio(buf, payload.filename || "audio.webm");
+        return packTurn(turn);
+      } finally {
+        refocusAiry();
+      }
     },
   );
 

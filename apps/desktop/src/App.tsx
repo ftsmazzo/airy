@@ -163,6 +163,7 @@ export function App() {
       setError(null);
       setOrb("thinking");
       setCaption("Pensando…");
+      let stopped = false;
       try {
         const res = await fn();
         setTurn({
@@ -171,17 +172,16 @@ export function App() {
           toolTrace: res.toolTrace,
         });
         setCaption(res.assistantText || "Pronto.");
+        stopped = res.toolTrace.includes("session_stop");
         await playAudio(res.audioBase64);
-        const stopped = res.toolTrace.includes("session_stop");
-        goDormant(
-          stopped
-            ? "Dormindo · 2 palmas quando quiser"
-            : DORMANT_CAPTION,
-        );
       } catch (e) {
         setError((e as Error).message);
         goDormant("Falha · tente de novo com palmas");
+        return;
       }
+      goDormant(
+        stopped ? "Dormindo · 2 palmas quando quiser" : DORMANT_CAPTION,
+      );
     },
     [goDormant, playAudio],
   );

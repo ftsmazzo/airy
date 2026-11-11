@@ -105,17 +105,20 @@ async function extractPdfText(file: string): Promise<string> {
     /* fallback */
   }
 
-  // 2) pdf-parse (npm)
+  // 2) pdf-parse v2 (classe PDFParse — não é função default)
   try {
-    const mod = await import("pdf-parse");
-    const pdfParse = (mod as { default?: (b: Buffer) => Promise<{ text: string }> }).default ||
-      (mod as unknown as (b: Buffer) => Promise<{ text: string }>);
+    const { PDFParse } = await import("pdf-parse");
     const buf = await readFile(file);
-    const out = await pdfParse(buf);
-    return out.text || "";
+    const parser = new PDFParse({ data: new Uint8Array(buf) });
+    try {
+      const out = await parser.getText();
+      return out?.text || "";
+    } finally {
+      await parser.destroy().catch(() => undefined);
+    }
   } catch (e) {
     throw new Error(
-      `Não consegui extrair texto do PDF (${(e as Error).message}). Instale Poppler (pdftotext) ou use PDF com texto selecionável.`,
+      `Não consegui extrair texto do PDF (${(e as Error).message}).`,
     );
   }
 }

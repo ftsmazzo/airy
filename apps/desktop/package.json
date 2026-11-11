@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "preview:orb": "vite --config vite.orb.config.ts",
     "build": "tsc -p tsconfig.node.json && vite build",
+    "build:orb": "vite build --config vite.orb.config.ts",
     "start": "electron ."
   },
   "dependencies": {

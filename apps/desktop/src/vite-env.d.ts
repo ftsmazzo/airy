@@ -15,7 +15,7 @@ export type AiryApi = {
 
 declare global {
   interface Window {
-    airy: AiryApi;
+    airy?: AiryApi;
   }
 }
 

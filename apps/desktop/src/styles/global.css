@@ -1,12 +1,15 @@
+@import url("https://fonts.googleapis.com/css2?family=Syne:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+
 :root {
   color-scheme: dark;
-  --bg: #070b14;
-  --fg: #e8eefc;
-  --muted: #8b9bb8;
-  --accent: #5ec8ff;
-  --accent-2: #7a5cff;
+  --bg: #04060d;
+  --fg: #eef5ff;
+  --muted: #8ea0bc;
+  --accent: #5ee0ff;
+  --accent-2: #6dffc2;
   --danger: #ff6b8a;
-  font-family: "Segoe UI", "SF Pro Text", system-ui, sans-serif;
+  --panel: rgba(6, 10, 20, 0.78);
+  font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
 }
 
 * {
@@ -18,15 +21,16 @@ body,
 #root {
   margin: 0;
   height: 100%;
-  background: radial-gradient(1200px 700px at 50% -10%, #13203a 0%, var(--bg) 55%);
   color: var(--fg);
+  background:
+    radial-gradient(900px 520px at 50% 38%, rgba(56, 170, 210, 0.16), transparent 60%),
+    radial-gradient(1200px 700px at 50% -8%, #101b33 0%, var(--bg) 58%);
 }
 
 .app {
   height: 100%;
   display: grid;
   grid-template-rows: 1fr auto;
-  gap: 0;
 }
 
 .stage {
@@ -34,44 +38,130 @@ body,
   place-items: center;
   position: relative;
   min-height: 0;
+  overflow: hidden;
+}
+
+.stage::before {
+  content: "";
+  position: absolute;
+  inset: 18% 22%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(94, 224, 255, 0.18) 0%,
+    rgba(109, 255, 194, 0.06) 38%,
+    transparent 70%
+  );
+  filter: blur(28px);
+  pointer-events: none;
+  animation: stage-breathe 4.8s ease-in-out infinite;
+}
+
+.stage[data-state="listening"]::before {
+  background: radial-gradient(circle, rgba(94, 224, 255, 0.28) 0%, transparent 68%);
+  animation-duration: 2.4s;
+}
+
+.stage[data-state="thinking"]::before {
+  background: radial-gradient(circle, rgba(168, 180, 255, 0.26) 0%, transparent 68%);
+  animation-duration: 1.6s;
+}
+
+.stage[data-state="speaking"]::before {
+  background: radial-gradient(circle, rgba(109, 255, 194, 0.28) 0%, transparent 68%);
+  animation-duration: 2s;
+}
+
+@keyframes stage-breathe {
+  0%,
+  100% {
+    transform: scale(0.92);
+    opacity: 0.75;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+}
+
+.orb-canvas {
+  width: min(100%, 720px);
+  height: min(78vh, 640px);
+  position: relative;
+  z-index: 1;
 }
 
 .hud {
   position: absolute;
-  top: 24px;
+  top: 28px;
   left: 0;
   right: 0;
   text-align: center;
   pointer-events: none;
+  z-index: 2;
 }
 
 .hud h1 {
   margin: 0;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  font-size: 14px;
+  font-family: Syne, "IBM Plex Sans", sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  font-size: clamp(28px, 5vw, 42px);
   text-transform: uppercase;
+  color: var(--fg);
+  text-shadow: 0 0 40px rgba(94, 224, 255, 0.25);
+}
+
+.hud .tagline {
+  margin-top: 6px;
+  font-size: 13px;
+  letter-spacing: 0.06em;
   color: var(--muted);
 }
 
 .hud .status {
-  margin-top: 8px;
-  font-size: 13px;
+  margin-top: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   color: var(--accent);
+}
+
+.hud .status .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 12px currentColor;
+  animation: blink 1.4s ease-in-out infinite;
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .panel {
   padding: 16px 20px 22px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(8, 12, 22, 0.72);
-  backdrop-filter: blur(10px);
+  background: var(--panel);
+  backdrop-filter: blur(14px);
+  z-index: 3;
 }
 
 .transcript {
   display: grid;
   gap: 8px;
   margin-bottom: 14px;
-  min-height: 64px;
+  min-height: 56px;
   font-size: 14px;
   line-height: 1.45;
 }
@@ -94,20 +184,24 @@ body,
   display: flex;
   gap: 10px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .controls input {
   flex: 1;
+  min-width: 180px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.03);
   color: var(--fg);
   border-radius: 12px;
   padding: 12px 14px;
   outline: none;
+  font: inherit;
 }
 
 .controls input:focus {
-  border-color: rgba(94, 200, 255, 0.45);
+  border-color: rgba(94, 224, 255, 0.45);
+  box-shadow: 0 0 0 3px rgba(94, 224, 255, 0.12);
 }
 
 button {
@@ -116,7 +210,8 @@ button {
   padding: 12px 16px;
   cursor: pointer;
   font-weight: 600;
-  color: #061018;
+  font: inherit;
+  color: #041018;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
 }
 
@@ -133,6 +228,11 @@ button:disabled {
 button.recording {
   background: linear-gradient(135deg, var(--danger), #ff9a5e);
   color: #1a0a10;
+}
+
+button.active-demo {
+  outline: 1px solid rgba(94, 224, 255, 0.55);
+  box-shadow: 0 0 18px rgba(94, 224, 255, 0.2);
 }
 
 .hint {

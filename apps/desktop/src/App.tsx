@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Orb, type OrbState } from "./components/Orb";
+import { startClapWake, type ClapWakeHandle } from "./lib/clapWake";
 
 type Turn = {
   userText: string;
@@ -14,27 +15,52 @@ export function App() {
   const [bootError, setBootError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [clapEnabled, setClapEnabled] = useState(true);
   const [text, setText] = useState("");
   const [turn, setTurn] = useState<Turn | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [hint, setHint] = useState("Push-to-talk: Espaço. Ou bata 2 palmas para falar.");
+  const [demo, setDemo] = useState(false);
 
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const recStreamRef = useRef<MediaStream | null>(null);
+  const clapRef = useRef<ClapWakeHandle | null>(null);
+  const busyRef = useRef(false);
+  const recordingRef = useRef(false);
+  const speakingRef = useRef(false);
+  const startRecordingRef = useRef<() => Promise<void>>(async () => {});
+
+  useEffect(() => {
+    busyRef.current = busy;
+  }, [busy]);
+  useEffect(() => {
+    recordingRef.current = recording;
+  }, [recording]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      if (!window.airy?.ready) {
+        setBootError("Agente indisponível — use Demo da orbe ou npm run preview:orb");
+        setDemo(true);
+        return;
+      }
       try {
         const r = await window.airy.ready();
         if (cancelled) return;
         if (!r.ok) {
           setBootError(r.error || "Falha ao iniciar agente");
+          setDemo(true);
           return;
         }
         setReady(true);
       } catch (e) {
-        if (!cancelled) setBootError((e as Error).message);
+        if (!cancelled) {
+          setBootError((e as Error).message);
+          setDemo(true);
+        }
       }
     })();
     return () => {
@@ -42,8 +68,31 @@ export function App() {
     };
   }, []);
 
+  // Demo visual da orbe (impacto na entrega, sem depender da voz)
+  useEffect(() => {
+    if (!demo || busy || recording || speakingRef.current) return;
+    const cycle: OrbState[] = ["idle", "listening", "thinking", "speaking"];
+    let i = 0;
+    setOrb(cycle[0]);
+    const id = setInterval(() => {
+      if (busyRef.current || recordingRef.current || speakingRef.current) return;
+      i = (i + 1) % cycle.length;
+      setOrb(cycle[i]);
+      setLevel(cycle[i] === "idle" ? 0.1 : 0.45 + Math.random() * 0.35);
+    }, 2600);
+    const wobble = setInterval(() => {
+      if (busyRef.current || recordingRef.current || speakingRef.current) return;
+      setLevel((v) => Math.min(1, Math.max(0.08, v + (Math.random() - 0.5) * 0.12)));
+    }, 120);
+    return () => {
+      clearInterval(id);
+      clearInterval(wobble);
+    };
+  }, [demo, busy, recording]);
+
   const playAudio = useCallback(async (b64: string | null) => {
     if (!b64) return;
+    speakingRef.current = true;
     setOrb("speaking");
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
     const blob = new Blob([bytes], { type: "audio/mpeg" });
@@ -79,6 +128,7 @@ export function App() {
     setLevel(0);
     URL.revokeObjectURL(url);
     await ctx.close();
+    speakingRef.current = false;
     setOrb("idle");
   }, []);
 
@@ -110,6 +160,106 @@ export function App() {
     [playAudio],
   );
 
+  const stopRecording = useCallback(() => {
+    const rec = mediaRef.current;
+    if (!rec || rec.state === "inactive") return;
+    rec.stop();
+    setRecording(false);
+    setLevel(0);
+  }, []);
+
+  const startRecording = useCallback(
+    async (opts?: { autoStopSilence?: boolean }) => {
+      if (busyRef.current || recordingRef.current || !ready) return;
+      setError(null);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recStreamRef.current = stream;
+      const rec = new MediaRecorder(stream, { mimeType: pickMime() });
+      chunksRef.current = [];
+      rec.ondataavailable = (ev) => {
+        if (ev.data.size) chunksRef.current.push(ev.data);
+      };
+      rec.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        recStreamRef.current = null;
+        const blob = new Blob(chunksRef.current, { type: rec.mimeType });
+        const buf = await blob.arrayBuffer();
+        const b64 = bufferToBase64(buf);
+        const ext = rec.mimeType.includes("ogg") ? "ogg" : "webm";
+        await runTurn(() => window.airy.voiceTurn(b64, `audio.${ext}`));
+      };
+      mediaRef.current = rec;
+      rec.start();
+      setRecording(true);
+      setOrb("listening");
+      setLevel(0.2);
+      setHint(
+        opts?.autoStopSilence
+          ? "Palmas detectadas — fale agora (para no silêncio)."
+          : "Gravando… Espaço ou Parar para enviar.",
+      );
+
+      if (opts?.autoStopSilence) {
+        const ctx = new AudioContext();
+        const source = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 1024;
+        source.connect(analyser);
+        const data = new Uint8Array(analyser.fftSize);
+        const started = performance.now();
+        let heardSpeech = false;
+        let silentFor = 0;
+        let last = performance.now();
+        let raf = 0;
+
+        const watch = () => {
+          if (!recordingRef.current) {
+            source.disconnect();
+            void ctx.close();
+            return;
+          }
+          analyser.getByteTimeDomainData(data);
+          let sum = 0;
+          for (let i = 0; i < data.length; i++) {
+            const v = (data[i] - 128) / 128;
+            sum += v * v;
+          }
+          const energy = Math.sqrt(sum / data.length);
+          setLevel(Math.min(1, energy * 5));
+          const now = performance.now();
+          const dt = now - last;
+          last = now;
+          if (energy > 0.05) {
+            heardSpeech = true;
+            silentFor = 0;
+          } else if (heardSpeech) {
+            silentFor += dt;
+          }
+          const elapsed = now - started;
+          if ((heardSpeech && silentFor > 1400) || elapsed > 12000) {
+            source.disconnect();
+            void ctx.close();
+            stopRecording();
+            return;
+          }
+          raf = requestAnimationFrame(watch);
+        };
+        raf = requestAnimationFrame(watch);
+        // cleanup if external stop
+        const prev = mediaRef.current;
+        if (prev) {
+          const orig = prev.onstop;
+          // keep onstop; cancel raf when stream ends via stopRecording
+          void raf;
+          void orig;
+        }
+      }
+    },
+    [ready, runTurn, stopRecording],
+  );
+
+  startRecordingRef.current = startRecording;
+
   const sendText = async () => {
     const q = text.trim();
     if (!q || busy || !ready) return;
@@ -117,37 +267,40 @@ export function App() {
     await runTurn(() => window.airy.textTurn(q));
   };
 
-  const startRecording = async () => {
-    if (busy || recording || !ready) return;
-    setError(null);
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const rec = new MediaRecorder(stream, { mimeType: pickMime() });
-    chunksRef.current = [];
-    rec.ondataavailable = (ev) => {
-      if (ev.data.size) chunksRef.current.push(ev.data);
+  // Clap wake (P1)
+  useEffect(() => {
+    if (!ready || !clapEnabled) {
+      clapRef.current?.stop();
+      clapRef.current = null;
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const handle = await startClapWake({
+          isActive: () =>
+            !busyRef.current && !recordingRef.current && !speakingRef.current,
+          onLevel: (lv) => {
+            if (!recordingRef.current && !speakingRef.current) setLevel(lv * 0.35);
+          },
+          onWake: () => {
+            setHint("2 palmas! Abrindo escuta…");
+            void startRecordingRef.current({ autoStopSilence: true });
+          },
+        });
+        if (cancelled) handle.stop();
+        else clapRef.current = handle;
+      } catch (e) {
+        setError(`Mic (palmas): ${(e as Error).message}`);
+        setClapEnabled(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      clapRef.current?.stop();
+      clapRef.current = null;
     };
-    rec.onstop = async () => {
-      stream.getTracks().forEach((t) => t.stop());
-      const blob = new Blob(chunksRef.current, { type: rec.mimeType });
-      const buf = await blob.arrayBuffer();
-      const b64 = bufferToBase64(buf);
-      const ext = rec.mimeType.includes("ogg") ? "ogg" : "webm";
-      await runTurn(() => window.airy.voiceTurn(b64, `audio.${ext}`));
-    };
-    mediaRef.current = rec;
-    rec.start();
-    setRecording(true);
-    setOrb("listening");
-    setLevel(0.2);
-  };
-
-  const stopRecording = () => {
-    const rec = mediaRef.current;
-    if (!rec || rec.state === "inactive") return;
-    rec.stop();
-    setRecording(false);
-    setLevel(0);
-  };
+  }, [ready, clapEnabled]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -164,13 +317,16 @@ export function App() {
 
   return (
     <div className="app">
-      <div className="stage">
+      <div className="stage" data-state={orb}>
         <div className="hud">
           <h1>Airy</h1>
+          <div className="tagline">assessor de voz · Ribeirão Preto</div>
           <div className="status">
-            {!ready && !bootError && "conectando MCP…"}
-            {bootError && "offline"}
+            <span className="dot" />
+            {!ready && !bootError && !demo && "conectando…"}
+            {demo && !ready && `demo · ${orb}`}
             {ready && orb}
+            {bootError && !demo && "offline"}
           </div>
         </div>
         <Orb state={orb} level={level} />
@@ -182,7 +338,7 @@ export function App() {
           {turn?.assistantText ? (
             <div className="assistant">Airy: {turn.assistantText}</div>
           ) : (
-            <div className="user">Segure a conversa por voz (Espaço) ou digite abaixo.</div>
+            <div className="user">Espaço = push-to-talk · 2 palmas = wake · ou digite abaixo.</div>
           )}
           {turn?.toolTrace?.length ? (
             <div className="tools">tools: {turn.toolTrace.join(" → ")}</div>
@@ -209,10 +365,29 @@ export function App() {
           >
             {recording ? "Parar" : "Falar"}
           </button>
+          <button
+            className="secondary"
+            disabled={!ready}
+            onClick={() => setClapEnabled((v) => !v)}
+            title="Wake por 2 palmas"
+          >
+            {clapEnabled ? "Palmas: on" : "Palmas: off"}
+          </button>
+          <button
+            className={demo ? "active-demo" : "secondary"}
+            onClick={() => {
+              setDemo((v) => !v);
+              if (demo) {
+                setOrb("idle");
+                setLevel(0);
+              }
+            }}
+            title="Ciclo visual da orbe"
+          >
+            {demo ? "Orbe demo: on" : "Orbe demo"}
+          </button>
         </div>
-        <div className="hint">
-          Push-to-talk: tecla Espaço. Desktop: Radar Municipal, YouTube, Spotify.
-        </div>
+        <div className="hint">{hint}</div>
         {bootError ? <div className="error">Boot: {bootError}</div> : null}
         {error ? <div className="error">{error}</div> : null}
       </div>

@@ -4,6 +4,10 @@ export type TtsConfig = {
   apiKey: string;
   voiceId: string;
   modelId?: string;
+  stability?: number;
+  similarity?: number;
+  style?: number;
+  speed?: number;
 };
 
 /**
@@ -19,6 +23,16 @@ export async function synthesizeSpeech(
   const model = cfg.modelId || "eleven_multilingual_v2";
   const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
 
+  const voice_settings: Record<string, number | boolean> = {
+    stability: cfg.stability ?? 0.45,
+    similarity_boost: cfg.similarity ?? 0.75,
+    style: cfg.style ?? 0.2,
+    use_speaker_boost: true,
+  };
+  if (cfg.speed != null && Number.isFinite(cfg.speed)) {
+    voice_settings.speed = cfg.speed;
+  }
+
   const res = await fetch(url, {
     method: "POST",
     headers: {
@@ -29,12 +43,7 @@ export async function synthesizeSpeech(
     body: JSON.stringify({
       text: text.slice(0, 4500),
       model_id: model,
-      voice_settings: {
-        stability: 0.45,
-        similarity_boost: 0.75,
-        style: 0.2,
-        use_speaker_boost: true,
-      },
+      voice_settings,
     }),
   });
 

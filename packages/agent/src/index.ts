@@ -8,7 +8,7 @@ import {
   type DesktopConfig,
 } from "./desktop.js";
 import { McpHttpClient } from "./mcp.js";
-import { buildSystemPrompt, loadIeDadosSkill } from "./prompt.js";
+import { buildSystemPrompt, loadIeDadosSkill, loadPersona } from "./prompt.js";
 
 export type AiryEnv = {
   openrouterApiKey: string;
@@ -16,10 +16,21 @@ export type AiryEnv = {
   elevenApiKey: string;
   elevenVoiceId: string;
   elevenTtsModel?: string;
+  elevenStability?: number;
+  elevenSimilarity?: number;
+  elevenStyle?: number;
+  elevenSpeed?: number;
   mcpToken: string;
   mcpBaseUrl: string;
   radarUrl: string;
+  personaPath?: string;
 };
+
+function numEnv(value: string | undefined, fallback: number): number {
+  if (value == null || value === "") return fallback;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
 
 export type TurnResult = {
   userText: string;
@@ -40,17 +51,31 @@ type ChatMessage = {
   name?: string;
 };
 
+function clean(value: string | undefined): string {
+  return (value || "").trim().replace(/^["']|["']$/g, "");
+}
+
 export function loadEnvFromProcess(): AiryEnv {
   const e = process.env;
   return {
-    openrouterApiKey: e.OPENROUTER_API_KEY || "",
-    openrouterModel: e.OPENROUTER_MODEL || "anthropic/claude-sonnet-4.5",
-    elevenApiKey: e.ELEVENLABS_API_KEY || "",
-    elevenVoiceId: e.ELEVENLABS_VOICE_ID || "",
-    elevenTtsModel: e.ELEVENLABS_TTS_MODEL || "eleven_multilingual_v2",
-    mcpToken: e.MCP_TOKEN || "",
-    mcpBaseUrl: e.MCP_BASE_URL || "https://ie-dados-mcp.kxryyk.easypanel.host",
-    radarUrl: e.AIRY_RADAR_URL || "",
+    openrouterApiKey: clean(e.OPENROUTER_API_KEY),
+    openrouterModel: clean(e.OPENROUTER_MODEL) || "anthropic/claude-sonnet-4.5",
+    elevenApiKey: clean(e.ELEVENLABS_API_KEY),
+    elevenVoiceId: clean(e.ELEVENLABS_VOICE_ID),
+    // Prefer ELEVENLABS_MODEL_ID (mesmo nome da conta Pro); fallback legado TTS_MODEL
+    elevenTtsModel:
+      clean(e.ELEVENLABS_MODEL_ID) ||
+      clean(e.ELEVENLABS_TTS_MODEL) ||
+      "eleven_multilingual_v2",
+    elevenStability: numEnv(e.ELEVENLABS_STABILITY, 0.45),
+    elevenSimilarity: numEnv(e.ELEVENLABS_SIMILARITY, 0.75),
+    elevenStyle: numEnv(e.ELEVENLABS_STYLE, 0.2),
+    elevenSpeed: numEnv(e.ELEVENLABS_SPEED, 1.0),
+    mcpToken: clean(e.MCP_TOKEN),
+    mcpBaseUrl:
+      clean(e.MCP_BASE_URL) || "https://ie-dados-mcp.kxryyk.easypanel.host",
+    radarUrl: clean(e.AIRY_RADAR_URL),
+    personaPath: clean(e.AIRY_PERSONA_PATH),
   };
 }
 
@@ -58,7 +83,8 @@ export class AiryAgent {
   private env: AiryEnv;
   private mcp: McpHttpClient;
   private desktop: DesktopConfig;
-  private systemPrompt: string;
+  private systemPrompt = "";
+  private personaPath = "";
   private history: ChatMessage[] = [];
   private mcpToolsOpenAI: Array<{
     type: "function";
@@ -69,7 +95,22 @@ export class AiryAgent {
     this.env = env;
     this.mcp = new McpHttpClient({ baseUrl: env.mcpBaseUrl, token: env.mcpToken });
     this.desktop = { radarUrl: env.radarUrl };
-    this.systemPrompt = buildSystemPrompt(loadIeDadosSkill());
+    this.reloadPersona();
+  }
+
+  /** Recarrega persona/AIRY_PERSONA.md (ou AIRY_PERSONA_PATH). */
+  reloadPersona(): { path: string } {
+    const persona = loadPersona(this.env.personaPath);
+    this.personaPath = persona.path;
+    this.systemPrompt = buildSystemPrompt(persona.text, loadIeDadosSkill());
+    if (this.history[0]?.role === "system") {
+      this.history[0] = { role: "system", content: this.systemPrompt };
+    }
+    return { path: persona.path };
+  }
+
+  getPersonaPath(): string {
+    return this.personaPath;
   }
 
   async ready(): Promise<void> {
@@ -202,6 +243,10 @@ export class AiryAgent {
           apiKey: this.env.elevenApiKey,
           voiceId: this.env.elevenVoiceId,
           modelId: this.env.elevenTtsModel,
+          stability: this.env.elevenStability,
+          similarity: this.env.elevenSimilarity,
+          style: this.env.elevenStyle,
+          speed: this.env.elevenSpeed,
         });
       } catch (e) {
         toolTrace.push(`tts_error:${(e as Error).message}`);
@@ -239,3 +284,4 @@ export {
   openYoutube,
   openAllowedUrl,
 } from "./desktop.js";
+export { loadPersona, loadIeDadosSkill, buildSystemPrompt } from "./prompt.js";

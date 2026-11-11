@@ -49,6 +49,11 @@ export async function synthesizeSpeech(
 
   if (!res.ok) {
     const err = await res.text();
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(
+        `ElevenLabs recusou a key (${res.status}). Abra Ajustes (tecla ,) e cole de novo. ${err.slice(0, 120)}`,
+      );
+    }
     throw new Error(`ElevenLabs TTS ${res.status}: ${err.slice(0, 400)}`);
   }
 

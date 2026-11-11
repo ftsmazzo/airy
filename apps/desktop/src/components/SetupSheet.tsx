@@ -96,13 +96,13 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
           <input value={elevenVoiceId} onChange={(e) => setElevenVoiceId(e.target.value)} />
         </label>
         <label>
-          OpenRouter API Key {view?.hasOpenrouterApiKey ? "(já salva — deixe vazio p/ manter)" : ""}
+          OpenRouter API Key {view?.hasOpenrouterApiKey ? "(já salva — cole de novo se der 401)" : ""}
           <input
             type="password"
             autoComplete="off"
             value={openrouterApiKey}
             onChange={(e) => setOpenrouterApiKey(e.target.value)}
-            placeholder={view?.hasOpenrouterApiKey ? "••••••••" : ""}
+            placeholder={view?.hasOpenrouterApiKey ? "sk-or-v1-…" : "sk-or-v1-…"}
           />
         </label>
         <label>

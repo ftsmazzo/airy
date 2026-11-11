@@ -22,6 +22,13 @@ export default defineConfig({
         vite: {
           build: {
             outDir: "dist-electron",
+            // Windows/Electron: CJS evita falha de ESM no preload
+            rollupOptions: {
+              output: {
+                format: "cjs",
+                entryFileNames: "preload.cjs",
+              },
+            },
           },
         },
       },

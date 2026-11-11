@@ -13,7 +13,7 @@
     "build": "npm run build -w @airy/voice && npm run build -w @airy/agent && npm run build -w @airy/desktop",
     "start": "npm run start -w @airy/desktop",
     "setup:mac": "bash scripts/setup-mac.sh",
-    "desktop-shortcut": "node scripts/install-desktop-shortcut.mjs",
+    "desktop-shortcut": "node scripts/make-icon-ico.mjs && node scripts/install-desktop-shortcut.mjs",
     "doctor": "node scripts/doctor.mjs",
     "smoke": "node scripts/smoke-text.mjs",
     "smoke:clap": "node scripts/smoke-clap.mjs",

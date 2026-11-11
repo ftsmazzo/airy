@@ -102,28 +102,48 @@ exec npm run dev
 }
 
 function winShortcut() {
-  const lnk = join(desktopDir, "Airy.lnk");
+  // gera .ico real para o Explorer
+  spawnSync(process.execPath, [join(ROOT, "scripts/make-icon-ico.mjs")], {
+    cwd: ROOT,
+    stdio: "inherit",
+  });
   const ico = join(ROOT, "apps/desktop/assets/icon.ico");
-  // usa png/jpg se não houver ico
   const iconPath = existsSync(ico) ? ico : iconSrc;
-  const target = process.execPath; // node
-  const args = `"${join(ROOT, "scripts/launch-airy.mjs")}"`;
+
+  const bat = join(desktopDir, "Airy.bat");
+  const batBody = `@echo off
+title Airy
+cd /d "${ROOT}"
+where npm >nul 2>nul
+if errorlevel 1 (
+  echo npm nao encontrado. Instale Node 20+ e tente de novo.
+  pause
+  exit /b 1
+)
+node scripts\\launch-airy.mjs
+if errorlevel 1 pause
+`;
+  writeFileSync(bat, batBody, "utf8");
+
+  const lnk = join(desktopDir, "Airy.lnk");
   const ps = `
 $W = New-Object -ComObject WScript.Shell
 $S = $W.CreateShortcut('${lnk.replace(/'/g, "''")}')
-$S.TargetPath = '${target.replace(/'/g, "''")}'
-$S.Arguments = '${args.replace(/'/g, "''")}'
+$S.TargetPath = '${bat.replace(/'/g, "''")}'
 $S.WorkingDirectory = '${ROOT.replace(/'/g, "''")}'
-$S.IconLocation = '${iconPath.replace(/'/g, "''")}'
-$S.Description = 'Airy — agente de voz'
+$S.IconLocation = '${iconPath.replace(/'/g, "''")},0'
+$S.Description = 'Airy — agente de voz Jarvis'
+$S.WindowStyle = 7
 $S.Save()
 `;
   const r = spawnSync("powershell", ["-NoProfile", "-Command", ps], { encoding: "utf8" });
   if (r.status !== 0) {
     console.error(r.stderr || r.stdout);
-    process.exit(1);
+    console.log(`OK  Fallback: use o Airy.bat na Área de Trabalho (${bat})`);
+    return;
   }
   console.log(`OK  Atalho Windows: ${lnk}`);
+  console.log(`OK  Launcher:       ${bat}`);
 }
 
 if (process.platform === "darwin") macShortcut();

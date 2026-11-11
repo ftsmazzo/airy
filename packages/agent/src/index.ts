@@ -14,6 +14,7 @@ import {
   loadIeDadosSkill,
   loadPersona,
 } from "./prompt.js";
+import { friendlyApiError, sanitizeSecret } from "./keys.js";
 import { isStopIntent, stopAck } from "./session.js";
 
 export type AiryEnv = {
@@ -59,15 +60,15 @@ type ChatMessage = {
 };
 
 function clean(value: string | undefined): string {
-  return (value || "").trim().replace(/^["']|["']$/g, "");
+  return sanitizeSecret(value);
 }
 
 export function loadEnvFromProcess(): AiryEnv {
   const e = process.env;
   return {
-    openrouterApiKey: clean(e.OPENROUTER_API_KEY),
+    openrouterApiKey: sanitizeSecret(e.OPENROUTER_API_KEY),
     openrouterModel: clean(e.OPENROUTER_MODEL) || "anthropic/claude-sonnet-4.5",
-    elevenApiKey: clean(e.ELEVENLABS_API_KEY),
+    elevenApiKey: sanitizeSecret(e.ELEVENLABS_API_KEY),
     elevenVoiceId: clean(e.ELEVENLABS_VOICE_ID),
     // Prefer ELEVENLABS_MODEL_ID (mesmo nome da conta Pro); fallback legado TTS_MODEL
     elevenTtsModel:
@@ -78,7 +79,7 @@ export function loadEnvFromProcess(): AiryEnv {
     elevenSimilarity: numEnv(e.ELEVENLABS_SIMILARITY, 0.75),
     elevenStyle: numEnv(e.ELEVENLABS_STYLE, 0.2),
     elevenSpeed: numEnv(e.ELEVENLABS_SPEED, 1.0),
-    mcpToken: clean(e.MCP_TOKEN),
+    mcpToken: sanitizeSecret(e.MCP_TOKEN),
     mcpBaseUrl:
       clean(e.MCP_BASE_URL) || "https://ie-dados-mcp.kxryyk.easypanel.host",
     radarUrl: clean(e.AIRY_RADAR_URL),
@@ -186,7 +187,8 @@ export class AiryAgent {
       }),
     });
     if (!res.ok) {
-      throw new Error(`OpenRouter ${res.status}: ${(await res.text()).slice(0, 500)}`);
+      const body = await res.text();
+      throw new Error(friendlyApiError("OpenRouter", res.status, body));
     }
     const data = (await res.json()) as {
       choices: Array<{ message: ChatMessage }>;
@@ -320,3 +322,4 @@ export {
 } from "./prompt.js";
 export { parseOwnerName } from "./name.js";
 export { isStopIntent, stopAck } from "./session.js";
+export { sanitizeSecret, looksLikeOpenRouterKey, looksLikeElevenKey } from "./keys.js";

@@ -75,26 +75,40 @@ function resolveAppIcon(): string | undefined {
   return candidates.find((p) => existsSync(p));
 }
 
+function resolvePreload(): string {
+  const candidates = [
+    join(__dirname, "preload.cjs"),
+    join(__dirname, "preload.js"),
+    join(__dirname, "preload.mjs"),
+  ];
+  const hit = candidates.find((p) => existsSync(p));
+  if (!hit) throw new Error(`Preload não encontrado em ${__dirname}`);
+  return hit;
+}
+
 function createWindow() {
   const display = screen.getPrimaryDisplay();
   const { width, height } = display.workAreaSize;
   const icon = resolveAppIcon();
+  const isWin = process.platform === "win32";
 
   mainWindow = new BrowserWindow({
-    width,
-    height,
+    width: Math.min(width, 1400),
+    height: Math.min(height, 900),
     x: display.workArea.x,
     y: display.workArea.y,
-    fullscreen: true,
+    // Windows: maximizado com frame (fecha/minimiza). Mac: fullscreen sem borda.
+    fullscreen: !isWin,
     simpleFullscreen: process.platform === "darwin",
-    frame: false,
+    frame: isWin,
     transparent: false,
     backgroundColor: "#02040a",
     title: "Airy",
     autoHideMenuBar: true,
+    show: false,
     ...(icon ? { icon } : {}),
     webPreferences: {
-      preload: join(__dirname, "preload.js"),
+      preload: resolvePreload(),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
@@ -102,6 +116,8 @@ function createWindow() {
   });
 
   mainWindow.setMenuBarVisibility(false);
+  if (isWin) mainWindow.maximize();
+  mainWindow.once("ready-to-show", () => mainWindow?.show());
 
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
@@ -169,6 +185,11 @@ app.whenReady().then(async () => {
     const next = !mainWindow.isFullScreen();
     mainWindow.setFullScreen(next);
     if (process.platform === "darwin") mainWindow.setSimpleFullScreen(next);
+  });
+
+  // Sai de verdade (atalho Windows que “sumia” ao fechar o terminal)
+  globalShortcut.register(process.platform === "darwin" ? "Command+Q" : "Control+Q", () => {
+    app.quit();
   });
 
   ipcMain.handle("airy:ready", async () => {

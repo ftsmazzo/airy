@@ -7,6 +7,7 @@
 import { app, safeStorage } from "electron";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { sanitizeSecret } from "@airy/agent";
 import type { AiryEnv } from "@airy/agent";
 
 export type PublicSettings = {
@@ -111,9 +112,13 @@ export function loadSettings(): SettingsForm {
   return { ...pub, ...secrets };
 }
 
-export function saveSettings( partial: Partial<SettingsForm>): SettingsForm {
+export function saveSettings(partial: Partial<SettingsForm>): SettingsForm {
   const current = loadSettings();
   const next: SettingsForm = { ...current, ...partial };
+  // limpa colagem ruim (Bearer, aspas, espaços)
+  for (const k of SECRET_KEYS) {
+    if (typeof next[k] === "string") next[k] = sanitizeSecret(next[k]);
+  }
 
   const secrets: DiskFile["secrets"] = {};
   for (const k of SECRET_KEYS) {

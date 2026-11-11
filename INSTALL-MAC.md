@@ -55,13 +55,17 @@ Esperado: `Doctor: OK` e `5/5 checks OK` no smoke.
 npm run preview:orb
 ```
 
-## 5) App completo (Electron)
+## 5) App completo (Electron) — use este, não o preview
 
 ```bash
 npm run dev
 ```
 
-Na **primeira** fala ou 2 palmas, o macOS pede **Microfone** → Permitir.
+- `npm run preview:orb` = **só a orbe** (sem agente; mensagem “Agente indisponível” é esperada).
+- `npm run dev` = app fullscreen com voz + MCP.
+
+Na **primeira** fala ou 2 palmas, o macOS pede **Microfone** → Permitir.  
+**F11** alterna fullscreen. **/** abre texto opcional. Uso principal: **2 palmas** ou **Espaço**.
 
 ### Checklist de aceite (5 min)
 

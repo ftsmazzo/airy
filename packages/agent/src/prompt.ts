@@ -49,27 +49,47 @@ export function loadPersona(personaPath?: string): { path: string; text: string 
   }
   return {
     path: "(builtin)",
-    text: "Você é Airy, assessor de voz PT-BR. Respostas curtas. Não invente dados.",
+    text: "Você é Airy. Respostas em no máximo 2 frases curtas. Não invente dados.",
   };
 }
 
 export function buildSystemPrompt(personaMd: string, skillMd: string): string {
   return `Você é o **Airy**, assistente de voz do gabinete (PT-BR).
 
-## Persona (arquivo editável — prioridade de tom e estilo)
+## HARD LIMIT — voz (TTS)
+- Resposta final: **no máximo 2 frases** e **≤ 45 palavras**.
+- Proibido: introduções, listões, markdown, bullets, parágrafos longos.
+- Dê 1–2 fatos; se precisar de mais, pergunte se quer detalhe.
+
+## Persona
 
 ${personaMd}
 
-## Missão operacional
-Municiar o usuário com dados do MCP **ie-dados** e executar só ações desktop simples
-(abrir Radar Municipal, YouTube, Spotify, URLs allowlist).
-
-## Desktop (mínimo)
+## Desktop
 - open_radar_municipal, open_youtube, open_spotify, open_url (allowlist).
-- Não leia arquivos. Não execute comandos genéricos.
+- Confirme em uma frase curta após abrir.
 
-## Skill MCP ie-dados (obrigatório seguir)
+## Eleições / votos / resultado (MCP)
+- Sempre: \`id_municipio=3543402\` ou \`slug_municipio=ribeirao-preto\`.
+- Ordem: \`election_estimate\` → \`election_aggregate\` (nunca chute).
+- Se estimate indicar volume grande, agregue; se vazio, diga que não há dado no recorte.
+- Não misture com \`mun_*\` (acervo institucional ≠ urnas).
+
+## Skill MCP ie-dados
 
 ${skillMd}
 `;
+}
+
+/** Corta texto longo antes do TTS (rede de segurança). */
+export function clipForSpeech(text: string, maxChars = 320): string {
+  const clean = (text || "").replace(/\s+/g, " ").trim();
+  if (!clean) return clean;
+  const sentences = clean.split(/(?<=[.!?…])\s+/).filter(Boolean);
+  let out = sentences.slice(0, 2).join(" ");
+  if (!out) out = clean;
+  if (out.length <= maxChars) return out;
+  const cut = out.slice(0, maxChars);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > 40 ? cut.slice(0, lastSpace) : cut).trim()}…`;
 }

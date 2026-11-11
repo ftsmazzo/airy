@@ -8,7 +8,12 @@ import {
   type DesktopConfig,
 } from "./desktop.js";
 import { McpHttpClient } from "./mcp.js";
-import { buildSystemPrompt, loadIeDadosSkill, loadPersona } from "./prompt.js";
+import {
+  buildSystemPrompt,
+  clipForSpeech,
+  loadIeDadosSkill,
+  loadPersona,
+} from "./prompt.js";
 
 export type AiryEnv = {
   openrouterApiKey: string;
@@ -227,6 +232,7 @@ export class AiryAgent {
     }
 
     if (!finalText) finalText = "Não consegui montar uma resposta agora.";
+    finalText = clipForSpeech(finalText);
 
     // evita histórico infinito
     if (this.history.length > 40) {
@@ -284,4 +290,9 @@ export {
   openYoutube,
   openAllowedUrl,
 } from "./desktop.js";
-export { loadPersona, loadIeDadosSkill, buildSystemPrompt } from "./prompt.js";
+export {
+  loadPersona,
+  loadIeDadosSkill,
+  buildSystemPrompt,
+  clipForSpeech,
+} from "./prompt.js";

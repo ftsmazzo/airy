@@ -1,4 +1,12 @@
-import { app, BrowserWindow, ipcMain, session, systemPreferences } from "electron";
+import {
+  app,
+  BrowserWindow,
+  globalShortcut,
+  ipcMain,
+  screen,
+  session,
+  systemPreferences,
+} from "electron";
 import { config as loadDotenv } from "dotenv";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -32,20 +40,26 @@ async function ensureMicAccess(): Promise<void> {
       await systemPreferences.askForMediaAccess("microphone");
     }
   } catch {
-    /* Electron antigo / sandbox — getUserMedia ainda pode pedir */
+    /* ok */
   }
 }
 
 function createWindow() {
+  const display = screen.getPrimaryDisplay();
+  const { width, height } = display.workAreaSize;
+
   mainWindow = new BrowserWindow({
-    width: 980,
-    height: 760,
-    minWidth: 720,
-    minHeight: 560,
-    backgroundColor: "#04060d",
+    width,
+    height,
+    x: display.workArea.x,
+    y: display.workArea.y,
+    fullscreen: true,
+    simpleFullscreen: process.platform === "darwin",
+    frame: false,
+    transparent: false,
+    backgroundColor: "#02040a",
     title: "Airy",
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
-    trafficLightPosition: process.platform === "darwin" ? { x: 16, y: 16 } : undefined,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -53,6 +67,8 @@ function createWindow() {
       sandbox: false,
     },
   });
+
+  mainWindow.setMenuBarVisibility(false);
 
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
@@ -95,6 +111,13 @@ app.whenReady().then(async () => {
   await ensureMicAccess();
   createWindow();
 
+  globalShortcut.register("F11", () => {
+    if (!mainWindow) return;
+    const next = !mainWindow.isFullScreen();
+    mainWindow.setFullScreen(next);
+    if (process.platform === "darwin") mainWindow.setSimpleFullScreen(next);
+  });
+
   ipcMain.handle("airy:ready", async () => {
     try {
       await getAgent();
@@ -124,6 +147,10 @@ app.whenReady().then(async () => {
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+app.on("will-quit", () => {
+  globalShortcut.unregisterAll();
 });
 
 app.on("window-all-closed", () => {

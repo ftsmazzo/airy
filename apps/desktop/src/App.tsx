@@ -15,22 +15,21 @@ export function App() {
   const [bootError, setBootError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [recording, setRecording] = useState(false);
-  const [clapEnabled, setClapEnabled] = useState(true);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [text, setText] = useState("");
   const [turn, setTurn] = useState<Turn | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [hint, setHint] = useState("Push-to-talk: Espaço. Ou bata 2 palmas para falar.");
-  const [demo, setDemo] = useState(false);
+  const [caption, setCaption] = useState("Duas palmas ou Espaço para falar");
 
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const recStreamRef = useRef<MediaStream | null>(null);
   const clapRef = useRef<ClapWakeHandle | null>(null);
   const busyRef = useRef(false);
   const recordingRef = useRef(false);
   const speakingRef = useRef(false);
-  const startRecordingRef = useRef<() => Promise<void>>(async () => {});
+  const startRecordingRef = useRef<(opts?: { autoStopSilence?: boolean }) => Promise<void>>(
+    async () => {},
+  );
 
   useEffect(() => {
     busyRef.current = busy;
@@ -43,8 +42,7 @@ export function App() {
     let cancelled = false;
     (async () => {
       if (!window.airy?.ready) {
-        setBootError("Agente indisponível — use Demo da orbe ou npm run preview:orb");
-        setDemo(true);
+        setBootError("Rode npm run dev (Electron). preview:orb é só visual.");
         return;
       }
       try {
@@ -52,15 +50,12 @@ export function App() {
         if (cancelled) return;
         if (!r.ok) {
           setBootError(r.error || "Falha ao iniciar agente");
-          setDemo(true);
           return;
         }
         setReady(true);
+        setCaption("Ouvindo palmas · Espaço para falar");
       } catch (e) {
-        if (!cancelled) {
-          setBootError((e as Error).message);
-          setDemo(true);
-        }
+        if (!cancelled) setBootError((e as Error).message);
       }
     })();
     return () => {
@@ -68,37 +63,17 @@ export function App() {
     };
   }, []);
 
-  // Demo visual da orbe (impacto na entrega, sem depender da voz)
-  useEffect(() => {
-    if (!demo || busy || recording || speakingRef.current) return;
-    const cycle: OrbState[] = ["idle", "listening", "thinking", "speaking"];
-    let i = 0;
-    setOrb(cycle[0]);
-    const id = setInterval(() => {
-      if (busyRef.current || recordingRef.current || speakingRef.current) return;
-      i = (i + 1) % cycle.length;
-      setOrb(cycle[i]);
-      setLevel(cycle[i] === "idle" ? 0.1 : 0.45 + Math.random() * 0.35);
-    }, 2600);
-    const wobble = setInterval(() => {
-      if (busyRef.current || recordingRef.current || speakingRef.current) return;
-      setLevel((v) => Math.min(1, Math.max(0.08, v + (Math.random() - 0.5) * 0.12)));
-    }, 120);
-    return () => {
-      clearInterval(id);
-      clearInterval(wobble);
-    };
-  }, [demo, busy, recording]);
-
   const playAudio = useCallback(async (b64: string | null) => {
-    if (!b64) return;
+    if (!b64) {
+      setOrb("idle");
+      return;
+    }
     speakingRef.current = true;
     setOrb("speaking");
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
     const blob = new Blob([bytes], { type: "audio/mpeg" });
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
-    audioRef.current = audio;
 
     const ctx = new AudioContext();
     const src = ctx.createMediaElementSource(audio);
@@ -130,6 +105,7 @@ export function App() {
     await ctx.close();
     speakingRef.current = false;
     setOrb("idle");
+    setCaption("Ouvindo palmas · Espaço para falar");
   }, []);
 
   const runTurn = useCallback(
@@ -142,6 +118,7 @@ export function App() {
       setBusy(true);
       setError(null);
       setOrb("thinking");
+      setCaption("Pensando…");
       try {
         const res = await fn();
         setTurn({
@@ -149,10 +126,12 @@ export function App() {
           assistantText: res.assistantText,
           toolTrace: res.toolTrace,
         });
+        setCaption(res.assistantText || "Pronto.");
         await playAudio(res.audioBase64);
       } catch (e) {
         setError((e as Error).message);
         setOrb("idle");
+        setCaption("Falha na resposta");
       } finally {
         setBusy(false);
       }
@@ -173,7 +152,6 @@ export function App() {
       if (busyRef.current || recordingRef.current || !ready) return;
       setError(null);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      recStreamRef.current = stream;
       const rec = new MediaRecorder(stream, { mimeType: pickMime() });
       chunksRef.current = [];
       rec.ondataavailable = (ev) => {
@@ -181,23 +159,18 @@ export function App() {
       };
       rec.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        recStreamRef.current = null;
         const blob = new Blob(chunksRef.current, { type: rec.mimeType });
         const buf = await blob.arrayBuffer();
         const b64 = bufferToBase64(buf);
         const ext = rec.mimeType.includes("ogg") ? "ogg" : "webm";
-        await runTurn(() => window.airy.voiceTurn(b64, `audio.${ext}`));
+        await runTurn(() => window.airy!.voiceTurn(b64, `audio.${ext}`));
       };
       mediaRef.current = rec;
       rec.start();
       setRecording(true);
       setOrb("listening");
-      setLevel(0.2);
-      setHint(
-        opts?.autoStopSilence
-          ? "Palmas detectadas — fale agora (para no silêncio)."
-          : "Gravando… Espaço ou Parar para enviar.",
-      );
+      setLevel(0.25);
+      setCaption(opts?.autoStopSilence ? "Pode falar…" : "Gravando… Espaço para enviar");
 
       if (opts?.autoStopSilence) {
         const ctx = new AudioContext();
@@ -210,7 +183,6 @@ export function App() {
         let heardSpeech = false;
         let silentFor = 0;
         let last = performance.now();
-        let raf = 0;
 
         const watch = () => {
           if (!recordingRef.current) {
@@ -235,24 +207,15 @@ export function App() {
           } else if (heardSpeech) {
             silentFor += dt;
           }
-          const elapsed = now - started;
-          if ((heardSpeech && silentFor > 1400) || elapsed > 12000) {
+          if ((heardSpeech && silentFor > 1200) || now - started > 10000) {
             source.disconnect();
             void ctx.close();
             stopRecording();
             return;
           }
-          raf = requestAnimationFrame(watch);
+          requestAnimationFrame(watch);
         };
-        raf = requestAnimationFrame(watch);
-        // cleanup if external stop
-        const prev = mediaRef.current;
-        if (prev) {
-          const orig = prev.onstop;
-          // keep onstop; cancel raf when stream ends via stopRecording
-          void raf;
-          void orig;
-        }
+        requestAnimationFrame(watch);
       }
     },
     [ready, runTurn, stopRecording],
@@ -260,20 +223,9 @@ export function App() {
 
   startRecordingRef.current = startRecording;
 
-  const sendText = async () => {
-    const q = text.trim();
-    if (!q || busy || !ready) return;
-    setText("");
-    await runTurn(() => window.airy.textTurn(q));
-  };
-
-  // Clap wake (P1)
+  // Palmas sempre ativas (produto voz-first)
   useEffect(() => {
-    if (!ready || !clapEnabled) {
-      clapRef.current?.stop();
-      clapRef.current = null;
-      return;
-    }
+    if (!ready) return;
     let cancelled = false;
     (async () => {
       try {
@@ -281,18 +233,17 @@ export function App() {
           isActive: () =>
             !busyRef.current && !recordingRef.current && !speakingRef.current,
           onLevel: (lv) => {
-            if (!recordingRef.current && !speakingRef.current) setLevel(lv * 0.35);
+            if (!recordingRef.current && !speakingRef.current) setLevel(lv * 0.25);
           },
           onWake: () => {
-            setHint("2 palmas! Abrindo escuta…");
+            setCaption("Palmas — pode falar");
             void startRecordingRef.current({ autoStopSilence: true });
           },
         });
         if (cancelled) handle.stop();
         else clapRef.current = handle;
       } catch (e) {
-        setError(`Mic (palmas): ${(e as Error).message}`);
-        setClapEnabled(false);
+        setError(`Mic: ${(e as Error).message}`);
       }
     })();
     return () => {
@@ -300,10 +251,22 @@ export function App() {
       clapRef.current?.stop();
       clapRef.current = null;
     };
-  }, [ready, clapEnabled]);
+  }, [ready]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.code === "Slash" && !e.metaKey && !e.ctrlKey) {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        e.preventDefault();
+        setSheetOpen((v) => !v);
+        return;
+      }
+      if (e.code === "Escape") {
+        setSheetOpen(false);
+        void window.airy; // noop keep
+        return;
+      }
       if (e.code !== "Space" || e.repeat) return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
@@ -315,40 +278,46 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  const sendText = async () => {
+    const q = text.trim();
+    if (!q || busy || !ready) return;
+    setText("");
+    setSheetOpen(false);
+    await runTurn(() => window.airy!.textTurn(q));
+  };
+
   return (
     <div className="app">
       <div className="stage" data-state={orb}>
-        <div className="hud">
-          <h1>Airy</h1>
-          <div className="tagline">assessor de voz · Ribeirão Preto</div>
+        <div className="hud-top">
+          <h1>AIRY</h1>
           <div className="status">
             <span className="dot" />
-            {!ready && !bootError && !demo && "conectando…"}
-            {demo && !ready && `demo · ${orb}`}
+            {!ready && !bootError && "boot"}
+            {bootError && "offline"}
             {ready && orb}
-            {bootError && !demo && "offline"}
           </div>
         </div>
-        <Orb state={orb} level={level} />
-      </div>
 
-      <div className="panel">
-        <div className="transcript">
-          {turn?.userText ? <div className="user">Você: {turn.userText}</div> : null}
-          {turn?.assistantText ? (
-            <div className="assistant">Airy: {turn.assistantText}</div>
-          ) : (
-            <div className="user">Espaço = push-to-talk · 2 palmas = wake · ou digite abaixo.</div>
-          )}
-          {turn?.toolTrace?.length ? (
-            <div className="tools">tools: {turn.toolTrace.join(" → ")}</div>
-          ) : null}
+        <Orb state={orb} level={level} />
+
+        <div className="caption">
+          <p className="line">{caption}</p>
+          {turn?.userText ? <p className="sub">Você: {turn.userText}</p> : null}
         </div>
 
-        <div className="controls">
+        <div className="hint-bar">2 palmas · espaço · / texto</div>
+      </div>
+
+      {(bootError || error) && (
+        <div className="error-toast">{bootError || error}</div>
+      )}
+
+      <div className={`sheet ${sheetOpen ? "open" : ""}`}>
+        <div className="row">
           <input
             value={text}
-            placeholder="Pergunte sobre Ribeirão, CABS, PIB… ou diga para abrir o Radar"
+            placeholder="Texto opcional…"
             disabled={!ready || busy}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
@@ -358,38 +327,8 @@ export function App() {
           <button disabled={!ready || busy || !text.trim()} onClick={() => void sendText()}>
             Enviar
           </button>
-          <button
-            className={`secondary ${recording ? "recording" : ""}`}
-            disabled={!ready || busy}
-            onClick={() => (recording ? stopRecording() : void startRecording())}
-          >
-            {recording ? "Parar" : "Falar"}
-          </button>
-          <button
-            className="secondary"
-            disabled={!ready}
-            onClick={() => setClapEnabled((v) => !v)}
-            title="Wake por 2 palmas"
-          >
-            {clapEnabled ? "Palmas: on" : "Palmas: off"}
-          </button>
-          <button
-            className={demo ? "active-demo" : "secondary"}
-            onClick={() => {
-              setDemo((v) => !v);
-              if (demo) {
-                setOrb("idle");
-                setLevel(0);
-              }
-            }}
-            title="Ciclo visual da orbe"
-          >
-            {demo ? "Orbe demo: on" : "Orbe demo"}
-          </button>
         </div>
-        <div className="hint">{hint}</div>
-        {bootError ? <div className="error">Boot: {bootError}</div> : null}
-        {error ? <div className="error">{error}</div> : null}
+        <div className="meta">Esc fecha · uso principal é voz</div>
       </div>
     </div>
   );

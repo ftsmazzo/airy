@@ -12,6 +12,8 @@
     "preview:orb": "npm run preview:orb -w @airy/desktop",
     "build": "npm run build -w @airy/voice && npm run build -w @airy/agent && npm run build -w @airy/desktop",
     "start": "npm run start -w @airy/desktop",
+    "setup:mac": "bash scripts/setup-mac.sh",
+    "doctor": "node scripts/doctor.mjs",
     "smoke": "node scripts/smoke-text.mjs",
     "smoke:clap": "node scripts/smoke-clap.mjs",
     "smoke:accept": "node scripts/smoke-accept.mjs"

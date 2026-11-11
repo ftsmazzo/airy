@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, session, systemPreferences } from "electron";
 import { config as loadDotenv } from "dotenv";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -12,6 +12,7 @@ function loadEnvFiles() {
     join(process.cwd(), ".env"),
     join(process.cwd(), "..", "..", ".env"),
     join(__dirname, "../../../.env"),
+    join(__dirname, "../../../../.env"),
   ];
   for (const p of roots) {
     if (existsSync(p)) loadDotenv({ path: p, override: false });
@@ -23,16 +24,33 @@ loadEnvFiles();
 let mainWindow: BrowserWindow | null = null;
 let agent: AiryAgent | null = null;
 
+async function ensureMicAccess(): Promise<void> {
+  if (process.platform !== "darwin") return;
+  try {
+    const status = systemPreferences.getMediaAccessStatus("microphone");
+    if (status !== "granted") {
+      await systemPreferences.askForMediaAccess("microphone");
+    }
+  } catch {
+    /* Electron antigo / sandbox — getUserMedia ainda pode pedir */
+  }
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 920,
-    height: 720,
-    backgroundColor: "#070b14",
+    width: 980,
+    height: 760,
+    minWidth: 720,
+    minHeight: 560,
+    backgroundColor: "#04060d",
     title: "Airy",
+    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+    trafficLightPosition: process.platform === "darwin" ? { x: 16, y: 16 } : undefined,
     webPreferences: {
       preload: join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: false,
     },
   });
 
@@ -65,7 +83,16 @@ function packTurn(turn: {
   };
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
+    if (permission === "media" || permission === "microphone") {
+      callback(true);
+      return;
+    }
+    callback(false);
+  });
+
+  await ensureMicAccess();
   createWindow();
 
   ipcMain.handle("airy:ready", async () => {
@@ -86,6 +113,7 @@ app.whenReady().then(() => {
   ipcMain.handle(
     "airy:voice-turn",
     async (_evt, payload: { audioBase64: string; filename: string }) => {
+      await ensureMicAccess();
       const a = await getAgent();
       const buf = Buffer.from(payload.audioBase64, "base64");
       const turn = await a.handleAudio(buf, payload.filename || "audio.webm");

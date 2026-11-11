@@ -85,7 +85,7 @@ export function loadEnvFromProcess(): AiryEnv {
   const e = process.env;
   return {
     openrouterApiKey: sanitizeSecret(e.OPENROUTER_API_KEY),
-    openrouterModel: clean(e.OPENROUTER_MODEL) || "anthropic/claude-sonnet-4.5",
+    openrouterModel: clean(e.OPENROUTER_MODEL) || "anthropic/claude-haiku-5.5",
     elevenApiKey: sanitizeSecret(e.ELEVENLABS_API_KEY),
     elevenVoiceId: clean(e.ELEVENLABS_VOICE_ID),
     // Prefer ELEVENLABS_MODEL_ID (mesmo nome da conta Pro); fallback legado TTS_MODEL

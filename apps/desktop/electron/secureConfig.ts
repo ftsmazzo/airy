@@ -46,7 +46,7 @@ const SECRET_KEYS: (keyof SecretSettings)[] = [
 const DEFAULT_PUBLIC: PublicSettings = {
   ownerName: "",
   radarUrl: "",
-  openrouterModel: "anthropic/claude-sonnet-4.5",
+  openrouterModel: "anthropic/claude-haiku-5.5",
   elevenVoiceId: "",
   elevenTtsModel: "eleven_v4",
   elevenStability: 0.35,
@@ -98,6 +98,16 @@ function writeDisk(file: DiskFile): void {
   writeFileSync(p, JSON.stringify(file, null, 2), "utf8");
 }
 
+/** Modelos caros legados → default econômico (Haiku 5.5). */
+const LEGACY_EXPENSIVE_MODELS = new Set([
+  "anthropic/claude-sonnet-4.5",
+  "anthropic/claude-sonnet-4",
+  "anthropic/claude-3.5-sonnet",
+  "anthropic/claude-3.7-sonnet",
+  "anthropic/claude-opus-4",
+  "anthropic/claude-opus-4.1",
+]);
+
 export function loadSettings(): SettingsForm {
   const disk = readDisk();
   const pub = { ...DEFAULT_PUBLIC, ...(disk?.public || {}) };
@@ -109,7 +119,17 @@ export function loadSettings(): SettingsForm {
   for (const k of SECRET_KEYS) {
     secrets[k] = decrypt(disk?.secrets?.[k] || "");
   }
-  return { ...pub, ...secrets };
+  const merged: SettingsForm = { ...pub, ...secrets };
+  // Migra Sonnet/Opus salvos no cofre para Haiku 5.5 (muito mais barato, tools ok)
+  if (LEGACY_EXPENSIVE_MODELS.has(merged.openrouterModel)) {
+    merged.openrouterModel = DEFAULT_PUBLIC.openrouterModel;
+    try {
+      saveSettings({ openrouterModel: merged.openrouterModel });
+    } catch {
+      /* ignora se disco falhar; o default em memória já vale nesta sessão */
+    }
+  }
+  return merged;
 }
 
 export function saveSettings(partial: Partial<SettingsForm>): SettingsForm {

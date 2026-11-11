@@ -11,6 +11,9 @@ type Props = {
 export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
   const [ownerName, setOwnerName] = useState("");
   const [radarUrl, setRadarUrl] = useState("");
+  const [openrouterModel, setOpenrouterModel] = useState(
+    "anthropic/claude-haiku-5.5",
+  );
   const [elevenVoiceId, setElevenVoiceId] = useState("");
   const [openrouterApiKey, setOpenrouterApiKey] = useState("");
   const [elevenApiKey, setElevenApiKey] = useState("");
@@ -27,6 +30,7 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
       setView(s);
       setOwnerName(s.ownerName || "");
       setRadarUrl(s.radarUrl || "");
+      setOpenrouterModel(s.openrouterModel || "anthropic/claude-haiku-5.5");
       setElevenVoiceId(s.elevenVoiceId || "");
       setOpenrouterApiKey("");
       setElevenApiKey("");
@@ -47,6 +51,7 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
       const payload: Record<string, unknown> = {
         ownerName,
         radarUrl,
+        openrouterModel: openrouterModel.trim() || "anthropic/claude-haiku-5.5",
         elevenVoiceId,
       };
       if (openrouterApiKey.trim()) payload.openrouterApiKey = openrouterApiKey.trim();
@@ -90,6 +95,25 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
         <label>
           URL Radar Municipal
           <input value={radarUrl} onChange={(e) => setRadarUrl(e.target.value)} />
+        </label>
+        <label>
+          Modelo OpenRouter (barato + tools)
+          <select
+            value={openrouterModel}
+            onChange={(e) => setOpenrouterModel(e.target.value)}
+          >
+            <option value="anthropic/claude-haiku-5.5">
+              Haiku 5.5 — recomendado (~30× mais barato que Sonnet)
+            </option>
+            <option value="openai/gpt-4o-mini">GPT-4o mini — barato e estável</option>
+            <option value="google/gemini-2.5-flash-lite">
+              Gemini 2.5 Flash Lite — o mais barato
+            </option>
+            <option value="google/gemini-2.5-flash">Gemini 2.5 Flash</option>
+            <option value="anthropic/claude-sonnet-4.5">
+              Sonnet 4.5 — caro (só se precisar)
+            </option>
+          </select>
         </label>
         <label>
           ElevenLabs Voice ID

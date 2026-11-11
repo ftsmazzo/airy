@@ -25,7 +25,7 @@ chmod +x scripts/setup-mac.sh && ./scripts/setup-mac.sh
 | Variável | Obrigatório | Notas |
 |----------|-------------|--------|
 | `OPENROUTER_API_KEY` | sim | |
-| `OPENROUTER_MODEL` | não | default `anthropic/claude-sonnet-4.5` |
+| `OPENROUTER_MODEL` | não | default `anthropic/claude-haiku-5.5` (barato + tools) |
 | `ELEVENLABS_API_KEY` | sim | |
 | `ELEVENLABS_VOICE_ID` | sim | voz PT-BR na conta Pro |
 | `ELEVENLABS_MODEL_ID` | não | ex.: `eleven_v4` |
@@ -54,13 +54,9 @@ npm run preview:orb
 npm run dev
 ```
 
-## Arquitetura
+## Por dentro
 
-- `apps/desktop` — Electron + React + orbe Three.js  
-- `packages/agent` — OpenRouter + MCP HTTP + desktop open  
-- `packages/voice` — STT/TTS ElevenLabs + detector de palmas  
-- `skills/ie-dados-mcp.md` — roteiro tipado do MCP  
-- `persona/AIRY_PERSONA.md` — prompt editável  
+Desktop com orbe vivo, agente de conversa, voz e persona editável em `persona/AIRY_PERSONA.md`.
 
 ## Repo
 

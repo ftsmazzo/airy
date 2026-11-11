@@ -37,7 +37,7 @@ export function OrbPreviewApp() {
         </div>
         <Orb state={orb} level={level} />
         <div className="caption">
-          <p className="line">Núcleo holográfico · preview</p>
+          <p className="line">HUD FUI · galáxia · preview</p>
         </div>
         <div className="hint-bar">npm run preview:orb</div>
       </div>

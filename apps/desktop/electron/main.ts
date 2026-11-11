@@ -93,11 +93,11 @@ function createWindow() {
   const isWin = process.platform === "win32";
 
   mainWindow = new BrowserWindow({
-    width: Math.min(width, 1400),
-    height: Math.min(height, 900),
+    width,
+    height,
     x: display.workArea.x,
     y: display.workArea.y,
-    // Windows: maximizado com frame (fecha/minimiza). Mac: fullscreen sem borda.
+    // Windows: maximizado com frame. Mac: fullscreen sem borda.
     fullscreen: !isWin,
     simpleFullscreen: process.platform === "darwin",
     frame: isWin,
@@ -116,7 +116,10 @@ function createWindow() {
   });
 
   mainWindow.setMenuBarVisibility(false);
-  if (isWin) mainWindow.maximize();
+  if (isWin) {
+    mainWindow.maximize();
+    mainWindow.setMinimumSize(900, 600);
+  }
   mainWindow.once("ready-to-show", () => mainWindow?.show());
 
   if (process.env.VITE_DEV_SERVER_URL) {

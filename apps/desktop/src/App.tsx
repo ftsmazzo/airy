@@ -420,6 +420,8 @@ export function App() {
       if (e.code !== "Space" || e.repeat) return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
+      // Espaço só acorda — não dorme no meio da escuta (use Esc / “para” / 2ª palmada)
+      if (sessionRef.current !== "dormant") return;
       e.preventDefault();
       void startListeningRef.current();
     };
@@ -458,7 +460,7 @@ export function App() {
         </div>
 
         <div className="hint-bar">
-          2 palmas / espaço · “para” na fala · , ajustes · / texto
+          2 palmas / espaço acordam · esc ou “para” dorme · , ajustes · / texto
         </div>
       </div>
 

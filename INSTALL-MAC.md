@@ -67,7 +67,7 @@ Na **primeira** fala ou 2 palmas, o macOS pede **Microfone** → Permitir.
 - De novo **2 palmas** / **Espaço** / **Esc** enquanto ouve → cancela e dorme.
 - Na fala: “para”, “chega”, “desliga”, “dorme” → ela confirma e dorme.
 - Depois de cada resposta → volta a **dormir** (precisa acordar de novo).
-- No `.env`: `AIRY_OWNER_NAME=Fred` → “Bom dia, Fred” / “Radar aberto, Fred” quando couber.
+- **Nome personalizável:** na 1ª vez (sem nome salvo), 2 palmas → ela pergunta “Qual é o seu nome?”, grava no cofre local e confirma (“Prazer, Fred.”). Depois edita na tecla `,` se quiser trocar.
 
 ### Checklist de aceite (5 min)
 

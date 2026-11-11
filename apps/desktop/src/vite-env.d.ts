@@ -43,6 +43,18 @@ export type AiryApi = {
   }>;
   textTurn: (text: string) => Promise<AiryTurn>;
   voiceTurn: (audioBase64: string, filename: string) => Promise<AiryTurn>;
+  speak: (text: string) => Promise<{ audioBase64: string }>;
+  enrollName: (
+    audioBase64: string,
+    filename: string,
+  ) => Promise<{
+    ok: boolean;
+    name?: string;
+    userText: string;
+    assistantText: string;
+    audioBase64: string | null;
+    settings?: AirySettingsView;
+  }>;
 };
 
 declare global {

@@ -11,13 +11,18 @@ import { config as loadDotenv } from "dotenv";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AiryAgent, loadEnvFromProcess, type AiryEnv } from "@airy/agent";
+import {
+  AiryAgent,
+  loadEnvFromProcess,
+  parseOwnerName,
+  type AiryEnv,
+} from "@airy/agent";
+import { synthesizeSpeech, transcribeAudio } from "@airy/voice";
 import {
   importFromEnvIfEmpty,
   loadSettings,
   saveSettings,
   settingsPublicView,
-  settingsStatus,
   settingsToAiryEnv,
   type SettingsForm,
 } from "./secureConfig.js";
@@ -214,6 +219,84 @@ app.whenReady().then(async () => {
       const buf = Buffer.from(payload.audioBase64, "base64");
       const turn = await a.handleAudio(buf, payload.filename || "audio.webm");
       return packTurn(turn);
+    },
+  );
+
+  ipcMain.handle("airy:speak", async (_evt, text: string) => {
+    const env = resolveEnv();
+    if (!env.elevenApiKey || !env.elevenVoiceId) {
+      throw new Error("ElevenLabs não configurado");
+    }
+    const audioMp3 = await synthesizeSpeech(String(text || "").slice(0, 400), {
+      apiKey: env.elevenApiKey,
+      voiceId: env.elevenVoiceId,
+      modelId: env.elevenTtsModel,
+      stability: env.elevenStability,
+      similarity: env.elevenSimilarity,
+      style: env.elevenStyle,
+      speed: env.elevenSpeed,
+    });
+    return { audioBase64: audioMp3.toString("base64") };
+  });
+
+  /** Primeira ativação: ouve o nome, grava no cofre local, confirma. */
+  ipcMain.handle(
+    "airy:enroll-name",
+    async (_evt, payload: { audioBase64: string; filename: string }) => {
+      await ensureMicAccess();
+      const env = resolveEnv();
+      const buf = Buffer.from(payload.audioBase64, "base64");
+      const userText = await transcribeAudio(buf, payload.filename || "audio.webm", {
+        apiKey: env.elevenApiKey,
+      });
+      const name = parseOwnerName(userText);
+      if (!name) {
+        const retry = "Não peguei o nome. Pode repetir só o nome?";
+        const audioMp3 = await synthesizeSpeech(retry, {
+          apiKey: env.elevenApiKey,
+          voiceId: env.elevenVoiceId,
+          modelId: env.elevenTtsModel,
+          stability: env.elevenStability,
+          similarity: env.elevenSimilarity,
+          style: env.elevenStyle,
+          speed: env.elevenSpeed,
+        });
+        return {
+          ok: false,
+          userText,
+          assistantText: retry,
+          audioBase64: audioMp3.toString("base64"),
+          settings: settingsPublicView(loadSettings()),
+        };
+      }
+
+      saveSettings({ ...loadSettings(), ownerName: name });
+      resetAgent();
+      // recria agente com o nome na persona
+      try {
+        await getAgent();
+      } catch {
+        /* keys podem estar ok mesmo assim */
+      }
+
+      const ack = `Prazer, ${name}. Duas palmas quando precisar.`;
+      const audioMp3 = await synthesizeSpeech(ack, {
+        apiKey: env.elevenApiKey,
+        voiceId: env.elevenVoiceId,
+        modelId: env.elevenTtsModel,
+        stability: env.elevenStability,
+        similarity: env.elevenSimilarity,
+        style: env.elevenStyle,
+        speed: env.elevenSpeed,
+      });
+      return {
+        ok: true,
+        name,
+        userText,
+        assistantText: ack,
+        audioBase64: audioMp3.toString("base64"),
+        settings: settingsPublicView(loadSettings()),
+      };
     },
   );
 

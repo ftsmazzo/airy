@@ -80,8 +80,12 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
         </p>
 
         <label>
-          Seu nome (ex.: Fred)
-          <input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} />
+          Seu nome (editável — ou deixe vazio p/ ela perguntar na 1ª palmada)
+          <input
+            value={ownerName}
+            onChange={(e) => setOwnerName(e.target.value)}
+            placeholder="Fred"
+          />
         </label>
         <label>
           URL Radar Municipal

@@ -318,3 +318,5 @@ export {
   buildSystemPrompt,
   clipForSpeech,
 } from "./prompt.js";
+export { parseOwnerName } from "./name.js";
+export { isStopIntent, stopAck } from "./session.js";

@@ -30,4 +30,15 @@ contextBridge.exposeInMainWorld("airy", {
       audioBase64: string | null;
       toolTrace: string[];
     }>,
+  speak: (text: string) =>
+    ipcRenderer.invoke("airy:speak", text) as Promise<{ audioBase64: string }>,
+  enrollName: (audioBase64: string, filename: string) =>
+    ipcRenderer.invoke("airy:enroll-name", { audioBase64, filename }) as Promise<{
+      ok: boolean;
+      name?: string;
+      userText: string;
+      assistantText: string;
+      audioBase64: string | null;
+      settings?: Record<string, unknown>;
+    }>,
 });

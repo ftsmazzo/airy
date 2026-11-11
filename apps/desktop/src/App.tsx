@@ -35,6 +35,8 @@ export function App() {
   const sessionRef = useRef<Session>("dormant");
   const discardRef = useRef(false);
   const speakingRef = useRef(false);
+  const settingsRef = useRef<AirySettingsView | null>(null);
+  const enrollModeRef = useRef(false);
   const startListeningRef = useRef<() => Promise<void>>(async () => {});
   const stopListeningRef = useRef<(opts?: { discard?: boolean; reason?: string }) => void>(
     () => {},
@@ -43,6 +45,9 @@ export function App() {
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
 
   const goDormant = useCallback((msg = DORMANT_CAPTION) => {
     setSession("dormant");
@@ -69,10 +74,11 @@ export function App() {
         }
         setReady(true);
         setBootError(null);
+        const named = Boolean((r.settings as AirySettingsView | undefined)?.ownerName?.trim());
         goDormant(
-          r.importedFromEnv
-            ? "Keys importadas do .env · dormindo"
-            : DORMANT_CAPTION,
+          named
+            ? DORMANT_CAPTION
+            : "Dormindo · 2 palmas — na 1ª vez peço seu nome",
         );
       } catch (e) {
         if (!cancelled) {
@@ -198,22 +204,43 @@ export function App() {
     if (!ready) return;
     if (sessionRef.current === "busy") return;
     if (sessionRef.current === "listening") {
-      // 2ª ativação = parar
       stopListening({ discard: true, reason: "Parei. Dormindo." });
-      goDormant("Dormindo · 2 palmas para acordar");
+      goDormant(DORMANT_CAPTION);
       return;
     }
     if (speakingRef.current) {
       stopSpeech();
-      goDormant("Parei a fala · 2 palmas para acordar");
+      goDormant(DORMANT_CAPTION);
       return;
+    }
+
+    const needsName = !settingsRef.current?.ownerName?.trim();
+    enrollModeRef.current = needsName;
+
+    // 1ª vez sem nome: pergunta antes de gravar a resposta
+    if (needsName && window.airy?.speak) {
+      setSession("busy");
+      setOrb("speaking");
+      setCaption("Oi! Qual é o seu nome?");
+      try {
+        const { audioBase64 } = await window.airy.speak(
+          "Oi! Qual é o seu nome?",
+        );
+        await playAudio(audioBase64);
+      } catch {
+        /* segue mesmo sem TTS */
+      }
     }
 
     discardRef.current = false;
     setError(null);
     setSession("listening");
     setOrb("listening");
-    setCaption("Ouvindo… diga o comando (ou 2 palmas para cancelar)");
+    setCaption(
+      needsName
+        ? "Diga seu nome… (2 palmas cancela)"
+        : "Ouvindo… diga o comando (ou 2 palmas para cancelar)",
+    );
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const rec = new MediaRecorder(stream, { mimeType: pickMime() });
@@ -228,26 +255,59 @@ export function App() {
       stream.getTracks().forEach((t) => t.stop());
       mediaRef.current = null;
       const discard = discardRef.current;
+      const enrolling = enrollModeRef.current;
       discardRef.current = false;
+      enrollModeRef.current = false;
       if (discard) {
-        goDormant("Dormindo · 2 palmas para acordar");
+        goDormant(DORMANT_CAPTION);
         return;
       }
       const blob = new Blob(chunksRef.current, { type: rec.mimeType });
       if (blob.size < 800) {
-        goDormant("Não ouvi nada · 2 palmas para tentar");
+        goDormant(
+          enrolling
+            ? "Não ouvi o nome · 2 palmas de novo"
+            : "Não ouvi nada · 2 palmas para tentar",
+        );
         return;
       }
       const buf = await blob.arrayBuffer();
       const b64 = bufferToBase64(buf);
       const ext = rec.mimeType.includes("ogg") ? "ogg" : "webm";
+
+      if (enrolling && window.airy?.enrollName) {
+        setSession("busy");
+        setOrb("thinking");
+        setCaption("Anotando seu nome…");
+        try {
+          const res = await window.airy.enrollName(b64, `audio.${ext}`);
+          if (res.settings) setSettings(res.settings);
+          setTurn({
+            userText: res.userText,
+            assistantText: res.assistantText,
+            toolTrace: res.ok ? ["enroll_name"] : ["enroll_name_retry"],
+          });
+          setCaption(res.assistantText);
+          await playAudio(res.audioBase64);
+          if (res.ok) {
+            goDormant(DORMANT_CAPTION);
+          } else {
+            // tenta de novo na próxima palmada
+            goDormant("Dormindo · 2 palmas para repetir o nome");
+          }
+        } catch (e) {
+          setError((e as Error).message);
+          goDormant("Falha ao gravar nome · tente de novo");
+        }
+        return;
+      }
+
       await runTurn(() => window.airy!.voiceTurn(b64, `audio.${ext}`));
     };
 
     rec.start();
     setLevel(0.25);
 
-    // silêncio encerra a fala e envia
     const ctx = new AudioContext();
     const source = ctx.createMediaStreamSource(stream);
     const analyser = ctx.createAnalyser();
@@ -291,7 +351,7 @@ export function App() {
       requestAnimationFrame(watch);
     };
     requestAnimationFrame(watch);
-  }, [goDormant, ready, runTurn, stopListening, stopSpeech]);
+  }, [goDormant, playAudio, ready, runTurn, stopListening, stopSpeech]);
 
   startListeningRef.current = startListening;
   stopListeningRef.current = stopListening;

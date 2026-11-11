@@ -1,0 +1,22 @@
+{
+  "name": "airy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Airy — agente de voz PT-BR com MCP ie-dados e orbe",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @airy/desktop",
+    "build": "npm run build -w @airy/voice && npm run build -w @airy/agent && npm run build -w @airy/desktop",
+    "start": "npm run start -w @airy/desktop",
+    "smoke": "node scripts/smoke-text.mjs"
+  },
+  "devDependencies": {
+    "dotenv": "^16.4.7"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -198,7 +198,9 @@ app.whenReady().then(async () => {
   }
 
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
-    if (permission === "media" || permission === "microphone") {
+    // Electron tipa Permission sem "microphone" em algumas versões; runtime ainda pede.
+    const p = permission as string;
+    if (p === "media" || p === "microphone") {
       callback(true);
       return;
     }

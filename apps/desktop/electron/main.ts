@@ -51,6 +51,17 @@ function loadEnvFiles() {
 
 loadEnvFiles();
 
+/** Persona/skills no pacote instalado (extraResources). */
+function applyPackagedResourcePaths(): void {
+  if (!app.isPackaged) return;
+  const persona = join(process.resourcesPath, "persona", "AIRY_PERSONA.md");
+  if (existsSync(persona) && !process.env.AIRY_PERSONA_PATH) {
+    process.env.AIRY_PERSONA_PATH = persona;
+  }
+}
+
+applyPackagedResourcePaths();
+
 let mainWindow: BrowserWindow | null = null;
 let agent: AiryAgent | null = null;
 let bootEnv: AiryEnv = loadEnvFromProcess();

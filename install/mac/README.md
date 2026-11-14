@@ -1,35 +1,25 @@
 # Airy — instalação macOS
 
-> Destino do usuário final: app com ícone, **sem** depender de Claude/Cursor.  
-> Enquanto o instalador `.dmg` (fatia 1.1) não fecha, use este fluxo de **dev/sócio**.
+## Usuário final (DMG)
 
-## Pré-requisitos
+1. Abra `Airy-*-arm64.dmg` ou `x64` (pasta `release/` após o build).
+2. Arraste **Airy** para Aplicativos → abra.
+3. Token de instalação → microfone → falar.
 
-- macOS 12+
-- Microfone permitido ao Airy
+> Sem notarização Apple ainda: pode pedir “Abrir mesmo assim” em Privacidade e Segurança.
 
-## Setup (desenvolvimento / handoff)
+## Gerar o DMG (só em Mac)
 
 ```bash
 cd /caminho/para/airy
+chmod +x install/mac/build.sh
+./install/mac/build.sh
+# ou: npm run dist:mac
+```
+
+## Setup legado (repo + npm — só desenvolvimento)
+
+```bash
 chmod +x install/mac/setup.sh
 ./install/mac/setup.sh
 ```
-
-O script chama o setup da raiz, roda o doctor (agora aceita cofre do app) e cria o atalho **Airy.app** na Área de Trabalho.
-
-## Primeiro uso
-
-1. Duplo clique em **Airy** na Área de Trabalho.
-2. Se pedir configuração: cole o **token de instalação** (ou keys manuais em Ajustes `,`).
-3. Autorize o microfone.
-4. Espaço / 2 palmas / “Airy …” para falar.
-
-## Credenciais
-
-Preferência: token provisionado pela Fábrica (não espalhar `.env` por AirDrop).  
-`.env` na raiz do repo continua opcional (importa uma vez para o cofre).
-
-## Empacotamento (próximo)
-
-Artefato alvo: `.app` / `.dmg` via electron-builder — ver `docs/PLANO-IMPLEMENTACAO.md` fatia **1.1**.

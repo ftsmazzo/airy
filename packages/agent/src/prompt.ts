@@ -16,11 +16,15 @@ function readFirstExisting(paths: string[]): string | null {
 }
 
 function repoRoots(): string[] {
-  return [
+  const roots = [
     join(__dirname, "../../.."),
     process.cwd(),
     join(process.cwd(), "../.."),
   ];
+  // App empacotado: persona/skills em resources/ (electron-builder extraResources)
+  const res = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+  if (res) roots.unshift(res);
+  return roots;
 }
 
 export function loadIeDadosSkill(): string {

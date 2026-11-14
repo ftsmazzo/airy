@@ -126,7 +126,7 @@ Antes do provisionador público na Fabrica-IA (`fabrica-seguranca`):
 | 1.5 voz preview | Pendente |
 | 1.6 notícias CNN live | **Feito mínimo** (`open_channel_live`) |
 | 1.7 MCP polish | Pendente |
-| 1.1 packaging electron-builder | Pendente |
+| 1.1 packaging electron-builder | **Win OK** — `release/Airy-Setup-0.1.0-x64.exe` (~105 MB); Mac DMG só em macOS; sem code signing ainda |
 
 ## 8. Fora deste plano (não puxar)
 

@@ -8,7 +8,7 @@
     "packages/*"
   ],
   "scripts": {
-    "postinstall": "npm run build -w @airy/voice && npm run build -w @airy/agent",
+    "postinstall": "npm run build -w @airy/voice && npm run build -w @airy/agent || node -e \"console.warn('[airy] postinstall build skipped (ok no pack)')\"",
     "dev": "npm run dev -w @airy/desktop",
     "preview:orb": "npm run preview:orb -w @airy/desktop",
     "build": "npm run build -w @airy/voice && npm run build -w @airy/agent && npm run build -w @airy/desktop",
@@ -16,6 +16,8 @@
     "setup:mac": "bash scripts/setup-mac.sh",
     "setup:win": "powershell -NoProfile -ExecutionPolicy Bypass -File install/win/setup.ps1",
     "desktop-shortcut": "node scripts/make-icon-ico.mjs && node scripts/install-desktop-shortcut.mjs",
+    "dist:win": "npm run build && npm run dist:win -w @airy/desktop",
+    "dist:mac": "npm run build && npm run dist:mac -w @airy/desktop",
     "doctor": "node scripts/doctor.mjs",
     "smoke": "node scripts/smoke-text.mjs",
     "smoke:clap": "node scripts/smoke-clap.mjs",
@@ -26,5 +28,9 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "allowScripts": {
+    "electron@33.4.11": true,
+    "esbuild@0.25.12": true
   }
 }

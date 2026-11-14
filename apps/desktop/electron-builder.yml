@@ -1,0 +1,51 @@
+appId: com.fabriai.airy
+productName: Airy
+copyright: Copyright © Fábrica IA
+electronVersion: 33.4.11
+npmRebuild: false
+nodeGypRebuild: false
+directories:
+  output: ../../release
+  buildResources: assets
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - assets/icon.png
+  - assets/icon.ico
+  - package.json
+extraResources:
+  - from: ../../persona
+    to: persona
+  - from: ../../skills
+    to: skills
+asar: true
+asarUnpack:
+  - "**/*.node"
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: assets/icon.ico
+  artifactName: Airy-Setup-${version}-${arch}.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Airy
+mac:
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+  icon: assets/icon.png
+  category: public.app-category.productivity
+  artifactName: Airy-${version}-${arch}.${ext}
+  hardenedRuntime: false
+linux:
+  target:
+    - AppImage
+  category: Utility
+publish: null

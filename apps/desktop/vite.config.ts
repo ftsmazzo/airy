@@ -1,6 +1,20 @@
+import { builtinModules } from "node:module";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import electron from "vite-plugin-electron/simple";
+
+const rootDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(rootDir, "../..");
+
+/** Em produção, embute agent/voice no main (instalador sem symlink de workspace). */
+const mainExternals = [
+  "electron",
+  "pdf-parse",
+  ...builtinModules,
+  ...builtinModules.map((m) => `node:${m}`),
+];
 
 export default defineConfig({
   plugins: [
@@ -9,10 +23,16 @@ export default defineConfig({
       main: {
         entry: "electron/main.ts",
         vite: {
+          resolve: {
+            alias: {
+              "@airy/agent": path.join(repoRoot, "packages/agent/src/index.ts"),
+              "@airy/voice": path.join(repoRoot, "packages/voice/src/index.ts"),
+            },
+          },
           build: {
             outDir: "dist-electron",
             rollupOptions: {
-              external: ["electron", "@airy/agent", "@airy/voice"],
+              external: mainExternals,
             },
           },
         },

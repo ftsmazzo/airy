@@ -35,6 +35,58 @@ CREATE TABLE IF NOT EXISTS install_tokens (
   );
 }
 
+/** Se BOOTSTRAP_TOKEN + keys estiverem nas env, upserta um token (ops sem painel). */
+async function bootstrapFromEnv() {
+  if (!pool) return;
+  const token = (process.env.BOOTSTRAP_TOKEN || "").trim();
+  if (token.length < 8) return;
+  const payload = {
+    version: 1,
+    secrets: {
+      openrouterApiKey: process.env.OPENROUTER_API_KEY || "",
+      elevenApiKey: process.env.ELEVENLABS_API_KEY || "",
+      mcpToken: process.env.MCP_TOKEN || "",
+    },
+    public: {
+      elevenVoiceId: process.env.ELEVENLABS_VOICE_ID || "",
+      openrouterModel:
+        process.env.OPENROUTER_MODEL || "anthropic/claude-haiku-5.5",
+      mcpBaseUrl:
+        process.env.MCP_BASE_URL ||
+        "https://ie-dados-mcp.kxryyk.easypanel.host",
+      radarUrl: process.env.AIRY_RADAR_URL || "",
+      ownerName: process.env.AIRY_OWNER_NAME || "",
+      elevenTtsModel: process.env.ELEVENLABS_MODEL_ID || "eleven_v4",
+      elevenStability: Number(process.env.ELEVENLABS_STABILITY || 0.35),
+      elevenSimilarity: Number(process.env.ELEVENLABS_SIMILARITY || 0.75),
+      elevenStyle: Number(process.env.ELEVENLABS_STYLE || 0),
+      elevenSpeed: Number(process.env.ELEVENLABS_SPEED || 1),
+      assistantName: process.env.AIRY_ASSISTANT_NAME || "Airy",
+    },
+  };
+  const maxUses = Number(process.env.BOOTSTRAP_MAX_USES || 20);
+  const days = Number(process.env.BOOTSTRAP_EXPIRES_DAYS || 90);
+  const expiresAt = new Date(Date.now() + days * 864e5);
+  await pool.query(
+    `INSERT INTO install_tokens (token_hash, payload_json, max_uses, expires_at, label, uses_count, revoked_at)
+     VALUES ($1, $2::jsonb, $3, $4, $5, 0, NULL)
+     ON CONFLICT (token_hash) DO UPDATE SET
+       payload_json = EXCLUDED.payload_json,
+       max_uses = EXCLUDED.max_uses,
+       expires_at = EXCLUDED.expires_at,
+       revoked_at = NULL,
+       label = EXCLUDED.label`,
+    [
+      hashToken(token),
+      JSON.stringify(payload),
+      maxUses,
+      expiresAt,
+      process.env.BOOTSTRAP_LABEL || "bootstrap",
+    ],
+  );
+  console.log("bootstrap token upserted (label=%s)", process.env.BOOTSTRAP_LABEL || "bootstrap");
+}
+
 /** @type {Map<string, { n: number, t: number }>} */
 const hits = new Map();
 
@@ -175,6 +227,7 @@ const server = createServer(async (req, res) => {
 });
 
 ensureSchema()
+  .then(() => bootstrapFromEnv())
   .then(() => {
     server.listen(PORT, () => {
       console.log(`airy-provisioner listening on :${PORT}`);

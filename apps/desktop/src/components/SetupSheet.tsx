@@ -161,12 +161,17 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
         <h2>{needsCreds ? "Começar com a Airy" : "Ajustes Airy"}</h2>
         <p className="setup-lead">
           {needsCreds
-            ? "Cole o token de instalação que você recebeu. Segredos ficam no cofre deste PC."
-            : "Assistente neste PC. Segredos no Keychain/DPAPI."}
+            ? view?.hasLicenseToken
+              ? "Token inválido, expirado ou revogado. Cole um token novo para liberar de novo."
+              : "Cole o token de instalação que você recebeu. Sem token válido a Airy fica bloqueada."
+            : "Assistente neste PC. Licença revalidada na VPS; segredos no Keychain/DPAPI."}
         </p>
 
         <fieldset className="setup-fieldset">
-          <legend>Token de instalação</legend>
+          <legend>
+            Token de instalação{" "}
+            {view?.hasLicenseToken ? "· ativo neste PC" : "· obrigatório"}
+          </legend>
           <label>
             Token
             <input
@@ -174,7 +179,11 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
               autoComplete="off"
               value={installToken}
               onChange={(e) => setInstallToken(e.target.value)}
-              placeholder="Cole aqui o token…"
+              placeholder={
+                view?.hasLicenseToken
+                  ? "Cole um novo só se precisar trocar…"
+                  : "Cole aqui o token…"
+              }
               onKeyDown={(e) => {
                 if (e.key === "Enter" && installToken.trim()) void activateToken();
               }}

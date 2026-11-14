@@ -37,6 +37,8 @@ export type SecretSettings = {
   openrouterApiKey: string;
   elevenApiKey: string;
   mcpToken: string;
+  /** Token de instalação — revalidado na VPS; sem ele o app bloqueia recursos. */
+  licenseToken: string;
 };
 
 export type SettingsForm = PublicSettings & SecretSettings;
@@ -51,6 +53,7 @@ const SECRET_KEYS: (keyof SecretSettings)[] = [
   "openrouterApiKey",
   "elevenApiKey",
   "mcpToken",
+  "licenseToken",
 ];
 
 const DEFAULT_PUBLIC: PublicSettings = {
@@ -143,6 +146,7 @@ export function loadSettings(): SettingsForm {
     openrouterApiKey: "",
     elevenApiKey: "",
     mcpToken: "",
+    licenseToken: "",
   };
   for (const k of SECRET_KEYS) {
     secrets[k] = decrypt(disk?.secrets?.[k] || "");
@@ -245,6 +249,7 @@ export function settingsStatus(s: SettingsForm): {
   path: string;
 } {
   const missing: string[] = [];
+  if (!s.licenseToken) missing.push("TOKEN");
   if (!s.openrouterApiKey) missing.push("OPENROUTER_API_KEY");
   if (!s.elevenApiKey) missing.push("ELEVENLABS_API_KEY");
   if (!s.elevenVoiceId) missing.push("ELEVENLABS_VOICE_ID");
@@ -255,6 +260,16 @@ export function settingsStatus(s: SettingsForm): {
     encryption: safeStorage.isEncryptionAvailable(),
     path: configPath(),
   };
+}
+
+/** Remove keys de API e licença (bloqueio / token inválido). */
+export function clearLicensedSecrets(): SettingsForm {
+  return saveSettings({
+    openrouterApiKey: "",
+    elevenApiKey: "",
+    mcpToken: "",
+    licenseToken: "",
+  });
 }
 
 /** Para a UI: não devolve segredos em claro, só se estão preenchidos. */
@@ -277,6 +292,7 @@ export function settingsPublicView(s: SettingsForm) {
     hasOpenrouterApiKey: Boolean(s.openrouterApiKey),
     hasElevenApiKey: Boolean(s.elevenApiKey),
     hasMcpToken: Boolean(s.mcpToken),
+    hasLicenseToken: Boolean(s.licenseToken),
     inboxEnabled: Boolean(s.inboxEnabled),
     inboxPath: s.inboxPath || "",
     inboxAutoSummarizePdf: Boolean(s.inboxAutoSummarizePdf),

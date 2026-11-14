@@ -1,5 +1,5 @@
 /**
- * Redeem de token de instalação no provisionador VPS.
+ * Redeem + validate de token de instalação no provisionador VPS.
  * Não loga o payload nem o token.
  */
 import type { SettingsForm } from "./secureConfig.js";
@@ -34,52 +34,90 @@ export function provisionerBaseUrl(): string {
   );
 }
 
-export async function redeemInstallToken(
+async function postToken(
+  path: "/v1/redeem" | "/v1/validate",
   token: string,
-): Promise<{ ok: true; partial: Partial<SettingsForm> } | { ok: false; error: string }> {
+): Promise<{ ok: boolean; status: number; error?: string; payload?: RedeemPayload }> {
   const base = provisionerBaseUrl();
   if (!base) {
     return {
       ok: false,
+      status: 0,
       error:
-        "Provisionador não configurado (AIRY_PROVISIONER_URL). Use keys manuais ou defina a URL.",
+        "Provisionador não configurado (AIRY_PROVISIONER_URL). Defina a URL ou use o default.",
     };
   }
   const t = (token || "").trim();
   if (t.length < 8) {
-    return { ok: false, error: "Token muito curto." };
+    return { ok: false, status: 400, error: "Token muito curto." };
   }
 
   let res: Response;
   try {
-    res = await fetch(`${base}/v1/redeem`, {
+    res = await fetch(`${base}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ token: t }),
       signal: AbortSignal.timeout(20000),
     });
   } catch (e) {
-    return { ok: false, error: `Sem rede no provisionador: ${(e as Error).message}` };
+    return {
+      ok: false,
+      status: 0,
+      error: `Sem rede no provisionador: ${(e as Error).message}`,
+    };
   }
 
   let body: { ok?: boolean; error?: string; payload?: RedeemPayload } = {};
   try {
     body = (await res.json()) as typeof body;
   } catch {
-    return { ok: false, error: `Resposta inválida (${res.status})` };
+    return { ok: false, status: res.status, error: `Resposta inválida (${res.status})` };
   }
 
-  if (!res.ok || !body.ok || !body.payload) {
+  if (!res.ok || !body.ok) {
     return {
       ok: false,
+      status: res.status,
       error: body.error || `Token recusado (${res.status})`,
     };
   }
+  return { ok: true, status: res.status, payload: body.payload };
+}
 
-  const p = body.payload;
+export async function redeemInstallToken(
+  token: string,
+): Promise<{ ok: true; partial: Partial<SettingsForm> } | { ok: false; error: string }> {
+  const result = await postToken("/v1/redeem", token);
+  if (!result.ok || !result.payload) {
+    return { ok: false, error: result.error || "Token recusado" };
+  }
+
+  const p = result.payload;
   const partial: Partial<SettingsForm> = {
     ...(p.secrets || {}),
     ...(p.public || {}),
+    licenseToken: (token || "").trim(),
   };
   return { ok: true, partial };
+}
+
+export async function validateLicenseToken(
+  token: string,
+): Promise<
+  | { ok: true }
+  | { ok: false; error: string; revokeLocal: boolean }
+> {
+  const result = await postToken("/v1/validate", token);
+  if (!result.ok) {
+    // Só apaga keys locais em recusa definitiva (inválido/revogado/expirado)
+    const revokeLocal =
+      result.status === 401 || result.status === 410 || result.status === 400;
+    return {
+      ok: false,
+      error: result.error || "Licença inválida",
+      revokeLocal,
+    };
+  }
+  return { ok: true };
 }

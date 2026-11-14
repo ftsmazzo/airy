@@ -27,6 +27,7 @@ export type AirySettingsView = {
   hasOpenrouterApiKey: boolean;
   hasElevenApiKey: boolean;
   hasMcpToken: boolean;
+  hasLicenseToken: boolean;
   inboxEnabled: boolean;
   inboxPath: string;
   inboxAutoSummarizePdf: boolean;

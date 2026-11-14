@@ -20,6 +20,7 @@ import {
 } from "@airy/agent";
 import { synthesizeSpeech, transcribeAudio } from "@airy/voice";
 import {
+  clearLicensedSecrets,
   importFromEnvIfEmpty,
   loadSettings,
   saveSettings,
@@ -33,7 +34,7 @@ import {
   startInboxWatch,
   stopInboxWatch,
 } from "./inboxWatch.js";
-import { redeemInstallToken } from "./redeemToken.js";
+import { redeemInstallToken, validateLicenseToken } from "./redeemToken.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -166,7 +167,52 @@ function createWindow() {
   }
 }
 
+/** Cache curto de validate — evita bater na VPS a cada frase. */
+let licenseCache: { token: string; ok: boolean; checkedAt: number; error?: string } | null =
+  null;
+const LICENSE_TTL_MS = 5 * 60_000;
+
+async function ensureLicense(): Promise<void> {
+  const skip = (process.env.AIRY_SKIP_LICENSE || "").trim() === "1";
+  if (skip) return;
+
+  const s = loadSettings();
+  const token = (s.licenseToken || "").trim();
+  if (!token) {
+    throw new Error("Token de instalação ausente — cole o token em Ajustes");
+  }
+
+  const now = Date.now();
+  if (
+    licenseCache &&
+    licenseCache.token === token &&
+    now - licenseCache.checkedAt < LICENSE_TTL_MS
+  ) {
+    if (licenseCache.ok) return;
+    throw new Error(licenseCache.error || "Token inválido");
+  }
+
+  const result = await validateLicenseToken(token);
+  if (!result.ok) {
+    licenseCache = {
+      token,
+      ok: false,
+      checkedAt: now,
+      error: result.error,
+    };
+    if (result.revokeLocal) {
+      clearLicensedSecrets();
+    }
+    resetAgent();
+    throw new Error(
+      result.error || "Token inválido ou revogado — peça um novo à Fábrica",
+    );
+  }
+  licenseCache = { token, ok: true, checkedAt: now };
+}
+
 async function getAgent(): Promise<AiryAgent> {
+  await ensureLicense();
   if (agent) return agent;
   const env = resolveEnv();
   const missing: string[] = [];
@@ -186,6 +232,7 @@ async function getAgent(): Promise<AiryAgent> {
 
 function resetAgent() {
   agent = null;
+  licenseCache = null;
 }
 
 function packTurn(turn: {
@@ -238,24 +285,25 @@ app.whenReady().then(async () => {
     try {
       const view = settingsPublicView(loadSettings());
       if (!view.configured) {
-        // ainda tenta .env legado
-        const env = resolveEnv();
-        if (env.openrouterApiKey && env.elevenApiKey && env.mcpToken && env.elevenVoiceId) {
-          await getAgent();
-          return { ok: true, settings: settingsPublicView(loadSettings()), importedFromEnv: imported };
-        }
         return {
           ok: false,
           needsSetup: true,
-          error: `Falta configurar: ${view.missing.join(", ")}`,
+          error: view.missing.includes("TOKEN")
+            ? "Cole o token de instalação para liberar a Airy"
+            : `Falta configurar: ${view.missing.join(", ")}`,
           settings: view,
         };
       }
       await getAgent();
-      return { ok: true, settings: view, importedFromEnv: imported };
+      return {
+        ok: true,
+        settings: settingsPublicView(loadSettings()),
+        importedFromEnv: imported,
+      };
     } catch (e) {
       return {
         ok: false,
+        needsSetup: true,
         error: (e as Error).message,
         settings: settingsPublicView(loadSettings()),
       };
@@ -288,19 +336,31 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("airy:settings-save", async (_evt, partial: Partial<SettingsForm>) => {
     try {
-      // não sobrescrever segredo com string vazia (campo mascarado na UI)
       const cur = loadSettings();
       const clean: Partial<SettingsForm> = { ...partial };
       if (clean.openrouterApiKey === "") delete clean.openrouterApiKey;
       if (clean.elevenApiKey === "") delete clean.elevenApiKey;
       if (clean.mcpToken === "") delete clean.mcpToken;
+      if (clean.licenseToken === "") delete clean.licenseToken;
+      // Keys manuais sem token não liberam o app
+      if (!cur.licenseToken && !clean.licenseToken) {
+        return {
+          ok: false,
+          error: "É preciso um token de instalação válido antes de salvar as keys",
+          settings: settingsPublicView(cur),
+        };
+      }
       saveSettings({ ...cur, ...clean });
       resetAgent();
       await getAgent();
       applyInboxWatch();
       return { ok: true, settings: settingsPublicView(loadSettings()) };
     } catch (e) {
-      return { ok: false, error: (e as Error).message, settings: settingsPublicView(loadSettings()) };
+      return {
+        ok: false,
+        error: (e as Error).message,
+        settings: settingsPublicView(loadSettings()),
+      };
     }
   });
 
@@ -352,6 +412,7 @@ app.whenReady().then(async () => {
   ipcMain.handle(
     "airy:speak",
     async (_evt, text: string, opts?: { voiceId?: string }) => {
+      await ensureLicense();
       const env = resolveEnv();
       const voiceId = (opts?.voiceId || env.elevenVoiceId || "").trim();
       if (!env.elevenApiKey || !voiceId) {
@@ -374,6 +435,7 @@ app.whenReady().then(async () => {
   ipcMain.handle(
     "airy:transcribe",
     async (_evt, payload: { audioBase64: string; filename: string }) => {
+      await ensureLicense();
       await ensureMicAccess();
       const env = resolveEnv();
       if (!env.elevenApiKey) throw new Error("ElevenLabs não configurado");
@@ -389,6 +451,7 @@ app.whenReady().then(async () => {
   ipcMain.handle(
     "airy:enroll-name",
     async (_evt, payload: { audioBase64: string; filename: string }) => {
+      await ensureLicense();
       await ensureMicAccess();
       const env = resolveEnv();
       const buf = Buffer.from(payload.audioBase64, "base64");

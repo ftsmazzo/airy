@@ -1,5 +1,5 @@
 /**
- * Airy provisioner — redeem de token de instalação.
+ * Airy provisioner — redeem + validate de token de instalação.
  * Sem painel admin. HTTPS na frente (EasyPanel).
  */
 import { createHash } from "node:crypto";
@@ -10,6 +10,7 @@ const PORT = Number(process.env.PORT || 8080);
 const DATABASE_URL = process.env.DATABASE_URL || "";
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX = Number(process.env.RATE_MAX_PER_MIN || 20);
+const REVOKE_OTHERS = (process.env.BOOTSTRAP_REVOKE_OTHERS || "1") !== "0";
 
 const pool = DATABASE_URL
   ? new pg.Pool({ connectionString: DATABASE_URL, max: 5 })
@@ -35,12 +36,6 @@ CREATE TABLE IF NOT EXISTS install_tokens (
   );
 }
 
-/**
- * Catálogo de vozes:
- * - ELEVENLABS_VOICES='[{"id":"abc","label":"Clara"},{"id":"def","label":"Pedro"}]'
- * - ou ELEVENLABS_VOICE_IDS=id1,id2,id3 (labels = id curto)
- * - ELEVENLABS_VOICE_ID continua sendo o default
- */
 function parseVoiceCatalog() {
   const rawJson = (process.env.ELEVENLABS_VOICES || "").trim();
   if (rawJson) {
@@ -69,6 +64,10 @@ function parseVoiceCatalog() {
   const single = (process.env.ELEVENLABS_VOICE_ID || "").trim();
   if (single) return [{ id: single, label: "Padrão" }];
   return [];
+}
+
+function hashToken(token) {
+  return createHash("sha256").update(token, "utf8").digest("hex");
 }
 
 /** Se BOOTSTRAP_TOKEN + keys estiverem nas env, upserta um token (ops sem painel). */
@@ -109,6 +108,9 @@ async function bootstrapFromEnv() {
   const maxUses = Number(process.env.BOOTSTRAP_MAX_USES || 20);
   const days = Number(process.env.BOOTSTRAP_EXPIRES_DAYS || 90);
   const expiresAt = new Date(Date.now() + days * 864e5);
+  const label = process.env.BOOTSTRAP_LABEL || "bootstrap";
+  const tokenHash = hashToken(token);
+
   await pool.query(
     `INSERT INTO install_tokens (token_hash, payload_json, max_uses, expires_at, label, uses_count, revoked_at)
      VALUES ($1, $2::jsonb, $3, $4, $5, 0, NULL)
@@ -118,23 +120,25 @@ async function bootstrapFromEnv() {
        expires_at = EXCLUDED.expires_at,
        revoked_at = NULL,
        label = EXCLUDED.label`,
-    [
-      hashToken(token),
-      JSON.stringify(payload),
-      maxUses,
-      expiresAt,
-      process.env.BOOTSTRAP_LABEL || "bootstrap",
-    ],
+    [tokenHash, JSON.stringify(payload), maxUses, expiresAt, label],
   );
-  console.log("bootstrap token upserted (label=%s)", process.env.BOOTSTRAP_LABEL || "bootstrap");
+
+  // Trocar BOOTSTRAP_TOKEN → revoga os outros do mesmo label (bloqueia quem não atualizar)
+  if (REVOKE_OTHERS) {
+    const rev = await pool.query(
+      `UPDATE install_tokens SET revoked_at = NOW()
+       WHERE label = $1 AND token_hash <> $2 AND revoked_at IS NULL`,
+      [label, tokenHash],
+    );
+    if (rev.rowCount) {
+      console.log("bootstrap revoked %s previous token(s) label=%s", rev.rowCount, label);
+    }
+  }
+  console.log("bootstrap token upserted (label=%s)", label);
 }
 
 /** @type {Map<string, { n: number, t: number }>} */
 const hits = new Map();
-
-function hashToken(token) {
-  return createHash("sha256").update(token, "utf8").digest("hex");
-}
 
 function clientIp(req) {
   const xf = req.headers["x-forwarded-for"];
@@ -179,6 +183,32 @@ function readBody(req) {
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
   });
+}
+
+function parseTokenBody(raw) {
+  const parsed = JSON.parse(raw || "{}");
+  return String(parsed.token || "").trim();
+}
+
+/** Valida licença contínua (não consome uso). */
+async function validate(token) {
+  if (!pool) throw new Error("DATABASE_URL missing");
+  const tokenHash = hashToken(token);
+  const { rows } = await pool.query(
+    `SELECT expires_at, revoked_at FROM install_tokens WHERE token_hash = $1`,
+    [tokenHash],
+  );
+  if (!rows.length) {
+    return { status: 401, body: { ok: false, error: "Token inválido" } };
+  }
+  const row = rows[0];
+  if (row.revoked_at) {
+    return { status: 410, body: { ok: false, error: "Token revogado — peça um novo à Fábrica" } };
+  }
+  if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
+    return { status: 410, body: { ok: false, error: "Token expirado — peça um novo à Fábrica" } };
+  }
+  return { status: 200, body: { ok: true } };
 }
 
 async function redeem(token) {
@@ -240,7 +270,10 @@ const server = createServer(async (req, res) => {
     }
   }
 
-  if (req.method === "POST" && url.pathname === "/v1/redeem") {
+  if (
+    req.method === "POST" &&
+    (url.pathname === "/v1/redeem" || url.pathname === "/v1/validate")
+  ) {
     const ip = clientIp(req);
     if (!rateLimit(ip)) {
       return send(res, 429, { ok: false, error: "Muitas tentativas. Aguarde um minuto." });
@@ -249,18 +282,20 @@ const server = createServer(async (req, res) => {
       const raw = await readBody(req);
       let token = "";
       try {
-        const parsed = JSON.parse(raw || "{}");
-        token = String(parsed.token || "").trim();
+        token = parseTokenBody(raw);
       } catch {
         return send(res, 400, { ok: false, error: "JSON inválido" });
       }
       if (token.length < 8 || token.length > 200) {
         return send(res, 400, { ok: false, error: "Token inválido" });
       }
-      const result = await redeem(token);
+      const result =
+        url.pathname === "/v1/validate"
+          ? await validate(token)
+          : await redeem(token);
       return send(res, result.status, result.body);
     } catch (e) {
-      console.error("redeem error", (e && e.message) || e);
+      console.error("token error", (e && e.message) || e);
       return send(res, 500, { ok: false, error: "Falha interna" });
     }
   }

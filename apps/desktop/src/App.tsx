@@ -189,8 +189,16 @@ export function App() {
         stopped = res.toolTrace.includes("session_stop");
         await playAudio(res.audioBase64);
       } catch (e) {
-        setError((e as Error).message);
-        goDormant("Falha · tente de novo com palmas");
+        const msg = (e as Error).message;
+        setError(msg);
+        if (/token|licen[cç]a|instalação/i.test(msg)) {
+          setReady(false);
+          setBootError(msg);
+          setSetupOpen(true);
+          goDormant("Bloqueado · ative um token válido");
+        } else {
+          goDormant("Falha · tente de novo com palmas");
+        }
         return;
       }
       goDormant(

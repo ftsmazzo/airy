@@ -8,7 +8,8 @@ Sem painel admin. Deploy na VPS Fabrica-IA (EasyPanel) + Postgres dedicado.
 | Método | Path | Auth |
 |---|---|---|
 | GET | `/health` | — |
-| POST | `/v1/redeem` | token no body |
+| POST | `/v1/redeem` | token no body → payload (consome uso) |
+| POST | `/v1/validate` | token no body → só checa válido/revogado/expirado |
 
 ## Env
 
@@ -22,6 +23,7 @@ Sem painel admin. Deploy na VPS Fabrica-IA (EasyPanel) + Postgres dedicado.
   `[{"id":"VOICE_ID_1","label":"Clara"},{"id":"VOICE_ID_2","label":"Pedro"}]`
 - ou `ELEVENLABS_VOICE_IDS=id1,id2,id3` (labels curtos automáticos)
 - `BOOTSTRAP_MAX_USES` / `BOOTSTRAP_EXPIRES_DAYS` / `BOOTSTRAP_LABEL` — opcionais
+- `BOOTSTRAP_REVOKE_OTHERS` — default `1`: ao rotacionar bootstrap, revoga tokens anteriores do mesmo label
 
 ## Produção (Fabrica-IA)
 

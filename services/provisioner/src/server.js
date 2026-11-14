@@ -15,6 +15,26 @@ const pool = DATABASE_URL
   ? new pg.Pool({ connectionString: DATABASE_URL, max: 5 })
   : null;
 
+async function ensureSchema() {
+  if (!pool) return;
+  await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto`);
+  await pool.query(`
+CREATE TABLE IF NOT EXISTS install_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  token_hash TEXT NOT NULL UNIQUE,
+  payload_json JSONB NOT NULL,
+  max_uses INT NOT NULL DEFAULT 3,
+  uses_count INT NOT NULL DEFAULT 0,
+  expires_at TIMESTAMPTZ,
+  revoked_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  label TEXT
+)`);
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS install_tokens_hash_idx ON install_tokens (token_hash)`,
+  );
+}
+
 /** @type {Map<string, { n: number, t: number }>} */
 const hits = new Map();
 
@@ -154,6 +174,13 @@ const server = createServer(async (req, res) => {
   send(res, 404, { ok: false, error: "not found" });
 });
 
-server.listen(PORT, () => {
-  console.log(`airy-provisioner listening on :${PORT}`);
-});
+ensureSchema()
+  .then(() => {
+    server.listen(PORT, () => {
+      console.log(`airy-provisioner listening on :${PORT}`);
+    });
+  })
+  .catch((e) => {
+    console.error("schema init failed", e?.message || e);
+    process.exit(1);
+  });

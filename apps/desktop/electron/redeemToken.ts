@@ -29,7 +29,7 @@ export type RedeemPayload = {
 export function provisionerBaseUrl(): string {
   return (
     (process.env.AIRY_PROVISIONER_URL || "").trim().replace(/\/$/, "") ||
-    ""
+    "https://airy-provisioner.kxryyk.easypanel.host"
   );
 }
 

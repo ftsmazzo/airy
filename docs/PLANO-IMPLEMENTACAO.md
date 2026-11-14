@@ -60,11 +60,13 @@ Trabalho em **fatias pequenas**, cada uma com critério de pronto testável. Ord
 
 | Fatia | Escopo |
 |---|---|
-| 2.1 | Orquestrador: menos idas ao modelo; tools de dados mais diretas / prompts enxutos |
+| 2.1 | Orquestrador 2 camadas: roteador barato + síntese forte (pesquisa/MCP/artefato) — **feito** |
+| 2.1b | Skills na UI (ligar/importar .md) + multi-MCP — **feito** |
 | 2.2 | Artefatos HTML premium (visual + texto sintético completo) |
 | 2.3 | Persona default genérica; editar persona na UI |
 | 2.4 | Pasta vigiada UX + doc “Drive sync = path local” |
 | 2.5 | Ops de tokens (rota interna/script melhor); opcional export settings |
+| CI | Workflow Win+Mac artifacts/release — **feito** (`.github/workflows/release-desktop.yml`) |
 
 ### Onda 3 — canal gerencial Google
 

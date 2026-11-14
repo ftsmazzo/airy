@@ -3,7 +3,11 @@ import {
   PACKAGE_CATALOG,
   type PackageId,
 } from "@airy/packages-catalog";
-import type { AirySettingsView } from "../vite-env";
+import type {
+  AiryMcpConnView,
+  AirySettingsView,
+  AirySkillView,
+} from "../vite-env";
 
 type Props = {
   open: boolean;
@@ -11,6 +15,8 @@ type Props = {
   onClose: () => void;
   onSaved: (settings: AirySettingsView) => void;
 };
+
+type McpDraft = AiryMcpConnView & { tokenDraft: string };
 
 const ALL_PACKAGE_IDS = PACKAGE_CATALOG.map((p) => p.id);
 
@@ -25,6 +31,9 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
   const [openrouterModel, setOpenrouterModel] = useState(
     "anthropic/claude-haiku-5.5",
   );
+  const [synthesisModel, setSynthesisModel] = useState(
+    "anthropic/claude-sonnet-4.5",
+  );
   const [elevenVoiceId, setElevenVoiceId] = useState("");
   const [voiceCatalog, setVoiceCatalog] = useState<
     Array<{ id: string; label: string }>
@@ -32,6 +41,9 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
   const [openrouterApiKey, setOpenrouterApiKey] = useState("");
   const [elevenApiKey, setElevenApiKey] = useState("");
   const [mcpToken, setMcpToken] = useState("");
+  const [mcpDrafts, setMcpDrafts] = useState<McpDraft[]>([]);
+  const [skills, setSkills] = useState<AirySkillView[]>([]);
+  const [enabledSkills, setEnabledSkills] = useState<string[]>([]);
   const [inboxEnabled, setInboxEnabled] = useState(true);
   const [inboxPath, setInboxPath] = useState("");
   const [inboxAutoSummarizePdf, setInboxAutoSummarizePdf] = useState(false);
@@ -58,12 +70,33 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
           : ALL_PACKAGE_IDS,
       );
       setOpenrouterModel(s.openrouterModel || "anthropic/claude-haiku-5.5");
+      setSynthesisModel(s.synthesisModel || "anthropic/claude-sonnet-4.5");
       setElevenVoiceId(s.elevenVoiceId || "");
       setVoiceCatalog(Array.isArray(s.voiceCatalog) ? s.voiceCatalog : []);
       setOpenrouterApiKey("");
       setElevenApiKey("");
       setMcpToken("");
       setInstallToken("");
+      const conns =
+        Array.isArray(s.mcpConnections) && s.mcpConnections.length
+          ? s.mcpConnections
+          : [
+              {
+                id: "ie-dados",
+                label: "ie-dados",
+                baseUrl: s.mcpBaseUrl || "https://ie-dados-mcp.kxryyk.easypanel.host",
+                enabled: true,
+                hasToken: Boolean(s.hasMcpToken),
+              },
+            ];
+      setMcpDrafts(conns.map((c) => ({ ...c, tokenDraft: "" })));
+      setEnabledSkills(Array.isArray(s.enabledSkills) ? s.enabledSkills : []);
+      try {
+        const listed = await window.airy?.listSkills?.();
+        if (listed) setSkills(listed);
+      } catch {
+        setSkills([]);
+      }
       setInboxEnabled(s.inboxEnabled !== false);
       const fallback =
         s.inboxPath ||
@@ -132,11 +165,51 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
     }
   };
 
+  const importSkill = async () => {
+    if (!window.airy?.importSkill) {
+      setMsg("Atualize o app — import de skill indisponível.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await window.airy.importSkill();
+      if (!res.ok) {
+        setMsg(res.error || "Import cancelado");
+        return;
+      }
+      if (res.skills) setSkills(res.skills);
+      if (res.settings?.enabledSkills) setEnabledSkills(res.settings.enabledSkills);
+      if (res.settings) {
+        setView(res.settings);
+        onSaved(res.settings);
+      }
+      setMsg(`Skill “${res.skill?.label || ""}” importada.`);
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const save = async () => {
     if (!window.airy?.saveSettings) return;
     setBusy(true);
     setMsg(null);
     try {
+      const mcpConnections = mcpDrafts.map((c) => ({
+        id: c.id.trim(),
+        label: c.label.trim() || c.id,
+        baseUrl: c.baseUrl.trim(),
+        enabled: c.enabled,
+      }));
+      const mcpTokenUpdates = mcpDrafts
+        .filter((c) => c.tokenDraft.trim())
+        .map((c) => ({ id: c.id.trim(), token: c.tokenDraft.trim() }));
+      const skillIds =
+        enabledSkills.length > 0
+          ? enabledSkills
+          : skills.filter((s) => s.enabled).map((s) => s.id);
+
       const payload: Record<string, unknown> = {
         ownerName,
         assistantName: assistantName.trim() || "Airy",
@@ -144,9 +217,13 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
         radarOpenAsApp,
         radarAppName: radarAppName.trim() || "Radar Municipal",
         enabledPackages,
+        enabledSkills: skillIds,
         openrouterModel: openrouterModel.trim() || "anthropic/claude-haiku-5.5",
+        synthesisModel: synthesisModel.trim() || "anthropic/claude-sonnet-4.5",
         elevenVoiceId,
         voiceCatalog,
+        mcpConnections,
+        mcpTokenUpdates,
         inboxEnabled,
         inboxPath: inboxPath.trim(),
         inboxAutoSummarizePdf,
@@ -315,25 +392,190 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
           </div>
         </fieldset>
 
-        <label>
-          Modelo OpenRouter (barato + tools)
-          <select
-            value={openrouterModel}
-            onChange={(e) => setOpenrouterModel(e.target.value)}
-          >
-            <option value="anthropic/claude-haiku-5.5">
-              Haiku 5.5 — recomendado (~30× mais barato que Sonnet)
-            </option>
-            <option value="openai/gpt-4o-mini">GPT-4o mini — barato e estável</option>
-            <option value="google/gemini-2.5-flash-lite">
-              Gemini 2.5 Flash Lite — o mais barato
-            </option>
-            <option value="google/gemini-2.5-flash">Gemini 2.5 Flash</option>
-            <option value="anthropic/claude-sonnet-4.5">
-              Sonnet 4.5 — caro (só se precisar)
-            </option>
-          </select>
-        </label>
+        <fieldset className="setup-fieldset">
+          <legend>Orquestrador (2 camadas)</legend>
+          <label>
+            Roteador (tools / barato)
+            <select
+              value={openrouterModel}
+              onChange={(e) => setOpenrouterModel(e.target.value)}
+            >
+              <option value="anthropic/claude-haiku-5.5">Haiku 5.5 — recomendado</option>
+              <option value="openai/gpt-4o-mini">GPT-4o mini</option>
+              <option value="google/gemini-2.5-flash-lite">Gemini Flash Lite</option>
+              <option value="google/gemini-2.5-flash">Gemini Flash</option>
+            </select>
+          </label>
+          <label>
+            Síntese final (pesquisa / artefato / MCP)
+            <select
+              value={synthesisModel}
+              onChange={(e) => setSynthesisModel(e.target.value)}
+            >
+              <option value="anthropic/claude-sonnet-4.5">Sonnet 4.5 — recomendado</option>
+              <option value="openai/gpt-4o">GPT-4o</option>
+              <option value="google/gemini-2.5-pro">Gemini 2.5 Pro</option>
+              <option value="anthropic/claude-haiku-5.5">Haiku 5.5 (mais barato)</option>
+            </select>
+          </label>
+          <p className="setup-hint">
+            Abre app/URL: só o roteador. Pesquisa, HTML e dados MCP: síntese no modelo
+            mais capaz.
+          </p>
+        </fieldset>
+
+        <fieldset className="setup-fieldset">
+          <legend>Skills</legend>
+          <p className="setup-hint">
+            Markdown de instrução. Pasta do usuário: ~/Airy/skills
+          </p>
+          <div className="setup-packages">
+            {skills.length === 0 ? (
+              <p className="setup-hint">Nenhuma skill ainda — importe um .md</p>
+            ) : (
+              skills.map((sk) => {
+                const on =
+                  enabledSkills.length === 0
+                    ? sk.enabled
+                    : enabledSkills.includes(sk.id);
+                return (
+                  <label key={sk.id} className="setup-check">
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      onChange={(e) => {
+                        const allIds = skills.map((x) => x.id);
+                        const base =
+                          enabledSkills.length > 0 ? enabledSkills : allIds;
+                        setEnabledSkills(
+                          e.target.checked
+                            ? [...new Set([...base, sk.id])]
+                            : base.filter((x) => x !== sk.id),
+                        );
+                      }}
+                    />
+                    {sk.label}
+                    <span className="setup-hint" style={{ margin: 0 }}>
+                      ({sk.source})
+                    </span>
+                  </label>
+                );
+              })
+            )}
+          </div>
+          <div className="setup-actions" style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              className="ghost"
+              disabled={busy}
+              onClick={() => void importSkill()}
+            >
+              Importar .md…
+            </button>
+          </div>
+        </fieldset>
+
+        <fieldset className="setup-fieldset">
+          <legend>Conexões MCP</legend>
+          <p className="setup-hint">
+            Tokens só no cofre local. URL https do servidor MCP do cliente/app.
+          </p>
+          {mcpDrafts.map((c, idx) => (
+            <div key={c.id || idx} className="setup-mcp-row">
+              <label className="setup-check">
+                <input
+                  type="checkbox"
+                  checked={c.enabled}
+                  onChange={(e) => {
+                    const next = [...mcpDrafts];
+                    next[idx] = { ...c, enabled: e.target.checked };
+                    setMcpDrafts(next);
+                  }}
+                />
+                Ativa
+              </label>
+              <label>
+                Id
+                <input
+                  value={c.id}
+                  onChange={(e) => {
+                    const next = [...mcpDrafts];
+                    next[idx] = { ...c, id: e.target.value };
+                    setMcpDrafts(next);
+                  }}
+                  placeholder="ie-dados"
+                />
+              </label>
+              <label>
+                Nome
+                <input
+                  value={c.label}
+                  onChange={(e) => {
+                    const next = [...mcpDrafts];
+                    next[idx] = { ...c, label: e.target.value };
+                    setMcpDrafts(next);
+                  }}
+                />
+              </label>
+              <label>
+                URL base
+                <input
+                  value={c.baseUrl}
+                  onChange={(e) => {
+                    const next = [...mcpDrafts];
+                    next[idx] = { ...c, baseUrl: e.target.value };
+                    setMcpDrafts(next);
+                  }}
+                  placeholder="https://…"
+                />
+              </label>
+              <label>
+                Token {c.hasToken ? "(já salvo — cole para trocar)" : ""}
+                <input
+                  type="password"
+                  autoComplete="off"
+                  value={c.tokenDraft}
+                  onChange={(e) => {
+                    const next = [...mcpDrafts];
+                    next[idx] = { ...c, tokenDraft: e.target.value };
+                    setMcpDrafts(next);
+                  }}
+                  placeholder={c.hasToken ? "••••••••" : "cole o token MCP"}
+                />
+              </label>
+              {mcpDrafts.length > 1 ? (
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => setMcpDrafts(mcpDrafts.filter((_, i) => i !== idx))}
+                >
+                  Remover
+                </button>
+              ) : null}
+            </div>
+          ))}
+          <div className="setup-actions" style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() =>
+                setMcpDrafts([
+                  ...mcpDrafts,
+                  {
+                    id: `mcp${mcpDrafts.length + 1}`,
+                    label: "Novo MCP",
+                    baseUrl: "",
+                    enabled: true,
+                    hasToken: false,
+                    tokenDraft: "",
+                  },
+                ])
+              }
+            >
+              + Conexão MCP
+            </button>
+          </div>
+        </fieldset>
 
         <fieldset className="setup-fieldset">
           <legend>Pasta vigiada</legend>

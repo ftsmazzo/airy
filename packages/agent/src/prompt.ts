@@ -77,7 +77,15 @@ export function buildSystemPrompt(
 - Nome não configurado. Não invente apelido.
 `;
 
-  return `Você é **${name}**, assistente pessoal de voz (PT-BR) — também ajuda com dados públicos via MCP quando pedirem.
+  const skillsBlock = skillMd.trim()
+    ? `
+## Skills ativas (siga estas instruções)
+
+${skillMd.trim()}
+`
+    : "";
+
+  return `Você é **${name}**, assistente pessoal de voz (PT-BR). Pode usar tools desktop, pesquisa, artefatos e conexões MCP ativas.
 Apresente-se e responda como **${name}** (não como outro produto).
 
 ## HARD LIMIT — voz (TTS)
@@ -89,6 +97,7 @@ Apresente-se e responda como **${name}** (não como outro produto).
 ## Sessão
 - Se o usuário só disser para parar/desligar/dormir: confirme em 1 frase curta e não chame tools.
 - “${name}, …” / abrir app / anotar / lembrar / pesquisar → use as tools certas e confirme curto.
+- Tools MCP vêm prefixadas \`mcp__<conexão>__<tool>\` — use a conexão certa para o pedido.
 
 ## Persona
 
@@ -111,16 +120,10 @@ ${memoryBlock}
 - create_html_artifact — relatório HTML local + abre no browser.
 - open_pdf / summarize_pdf — paths na pasta do usuário.
 
-## Dados públicos (MCP ie-dados) — quando pedirem votos/CABS/etc.
-- Prefira \`id_municipio=3543402\` ou \`slug_municipio=ribeirao-preto\` se for Ribeirão.
-- Ordem eleitoral: \`election_estimate\` → \`election_aggregate\` (nunca chute).
-- Se o MCP vier vazio/incompleto/offline, diga isso com honestidade — não invente urna.
-- Se a tool MCP responder que token/rede falhou, fale em 1 frase curta e ofereça tentar de novo.
-
-## Skill MCP ie-dados
-
-${skillMd}
-`;
+## MCP
+- Use tools MCP quando o usuário pedir dados de sistemas conectados.
+- Se MCP vier vazio/offline/token inválido, diga com honestidade — não invente dados.
+${skillsBlock}`;
 }
 
 /** Corta texto longo antes do TTS (rede de segurança). */

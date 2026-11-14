@@ -14,6 +14,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   AiryAgent,
+  defaultUserSkillsDir,
+  ensureUserSkillsDir,
+  importSkillFile,
+  listSkills,
   loadEnvFromProcess,
   parseOwnerName,
   type AiryEnv,
@@ -23,6 +27,7 @@ import {
   clearLicensedSecrets,
   importFromEnvIfEmpty,
   loadSettings,
+  mergeMcpConnectionTokens,
   saveSettings,
   settingsPublicView,
   settingsToAiryEnv,
@@ -219,7 +224,7 @@ async function getAgent(): Promise<AiryAgent> {
   if (!env.openrouterApiKey) missing.push("OpenRouter");
   if (!env.elevenApiKey) missing.push("ElevenLabs");
   if (!env.elevenVoiceId) missing.push("Voice ID");
-  if (!env.mcpToken) missing.push("MCP");
+  // MCP é soft-fail — não bloqueia boot
   if (missing.length) {
     throw new Error(
       `Config incompleta (${missing.join(", ")}) — tecla , para Ajustes`,
@@ -346,15 +351,17 @@ app.whenReady().then(async () => {
     }
   });
 
-  ipcMain.handle("airy:settings-save", async (_evt, partial: Partial<SettingsForm>) => {
+  ipcMain.handle("airy:settings-save", async (_evt, partial: Partial<SettingsForm> & {
+    mcpTokenUpdates?: Array<{ id: string; token?: string }>;
+  }) => {
     try {
       const cur = loadSettings();
       const clean: Partial<SettingsForm> = { ...partial };
+      delete (clean as { mcpTokenUpdates?: unknown }).mcpTokenUpdates;
       if (clean.openrouterApiKey === "") delete clean.openrouterApiKey;
       if (clean.elevenApiKey === "") delete clean.elevenApiKey;
       if (clean.mcpToken === "") delete clean.mcpToken;
       if (clean.licenseToken === "") delete clean.licenseToken;
-      // Keys manuais sem token não liberam o app
       if (!cur.licenseToken && !clean.licenseToken) {
         return {
           ok: false,
@@ -362,6 +369,21 @@ app.whenReady().then(async () => {
           settings: settingsPublicView(cur),
         };
       }
+      if (Array.isArray(partial.mcpTokenUpdates) && partial.mcpTokenUpdates.length) {
+        clean.mcpConnectionTokensJson = mergeMcpConnectionTokens(
+          cur.mcpConnectionTokensJson,
+          partial.mcpTokenUpdates,
+        );
+      }
+      // sync legado: 1ª conexão ie-dados → mcpToken/mcpBaseUrl
+      const conns = clean.mcpConnections ?? cur.mcpConnections;
+      const ie = Array.isArray(conns)
+        ? conns.find((c) => c.id === "ie-dados")
+        : undefined;
+      if (ie?.baseUrl) clean.mcpBaseUrl = ie.baseUrl;
+      const tokUpdate = partial.mcpTokenUpdates?.find((t) => t.id === "ie-dados");
+      if (tokUpdate?.token) clean.mcpToken = tokUpdate.token;
+
       saveSettings({ ...cur, ...clean });
       resetAgent();
       await getAgent();
@@ -374,6 +396,49 @@ app.whenReady().then(async () => {
         settings: settingsPublicView(loadSettings()),
       };
     }
+  });
+
+  ipcMain.handle("airy:skills-list", async () => {
+    const s = loadSettings();
+    ensureUserSkillsDir(defaultUserSkillsDir());
+    return listSkills({
+      userSkillsDir: defaultUserSkillsDir(),
+      enabledSkills: s.enabledSkills,
+    });
+  });
+
+  ipcMain.handle("airy:skills-import", async () => {
+    const res = await dialog.showOpenDialog(mainWindow!, {
+      title: "Importar skill (.md)",
+      properties: ["openFile"],
+      filters: [{ name: "Markdown", extensions: ["md"] }],
+    });
+    if (res.canceled || !res.filePaths[0]) return { ok: false as const };
+    const imported = importSkillFile(res.filePaths[0], defaultUserSkillsDir());
+    if (!imported.ok) return { ok: false as const, error: imported.error };
+    const cur = loadSettings();
+    const enabled = new Set(
+      Array.isArray(cur.enabledSkills) && cur.enabledSkills.length
+        ? cur.enabledSkills
+        : listSkills({ userSkillsDir: defaultUserSkillsDir() }).map((x) => x.id),
+    );
+    enabled.add(imported.meta.id);
+    saveSettings({ enabledSkills: [...enabled] });
+    resetAgent();
+    try {
+      await getAgent();
+    } catch {
+      /* ok */
+    }
+    return {
+      ok: true as const,
+      skill: imported.meta,
+      settings: settingsPublicView(loadSettings()),
+      skills: listSkills({
+        userSkillsDir: defaultUserSkillsDir(),
+        enabledSkills: loadSettings().enabledSkills,
+      }),
+    };
   });
 
   ipcMain.handle("airy:pick-folder", async () => {

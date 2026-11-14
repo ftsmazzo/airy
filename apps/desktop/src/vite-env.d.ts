@@ -7,6 +7,22 @@ export type AiryTurn = {
   toolTrace: string[];
 };
 
+export type AiryMcpConnView = {
+  id: string;
+  label: string;
+  baseUrl: string;
+  enabled: boolean;
+  hasToken: boolean;
+};
+
+export type AirySkillView = {
+  id: string;
+  label: string;
+  source: "bundled" | "user";
+  path: string;
+  enabled: boolean;
+};
+
 export type AirySettingsView = {
   configured: boolean;
   missing: string[];
@@ -18,7 +34,9 @@ export type AirySettingsView = {
   radarOpenAsApp: boolean;
   radarAppName: string;
   enabledPackages: string[];
+  enabledSkills: string[];
   openrouterModel: string;
+  synthesisModel: string;
   elevenVoiceId: string;
   voiceCatalog: Array<{ id: string; label: string }>;
   elevenTtsModel: string;
@@ -27,6 +45,7 @@ export type AirySettingsView = {
   elevenStyle: number;
   elevenSpeed: number;
   mcpBaseUrl: string;
+  mcpConnections: AiryMcpConnView[];
   hasOpenrouterApiKey: boolean;
   hasElevenApiKey: boolean;
   hasMcpToken: boolean;
@@ -38,6 +57,13 @@ export type AirySettingsView = {
     ok: boolean;
     toolCount: number;
     error?: string;
+    connections?: Array<{
+      id: string;
+      label: string;
+      ok: boolean;
+      toolCount: number;
+      error?: string;
+    }>;
   };
 };
 
@@ -48,11 +74,7 @@ export type AiryApi = {
     needsSetup?: boolean;
     importedFromEnv?: boolean;
     settings?: AirySettingsView;
-    mcp?: {
-      ok: boolean;
-      toolCount: number;
-      error?: string;
-    };
+    mcp?: AirySettingsView["mcp"];
   }>;
   getSettings: () => Promise<AirySettingsView>;
   saveSettings: (partial: Record<string, unknown>) => Promise<{
@@ -64,6 +86,14 @@ export type AiryApi = {
     ok: boolean;
     error?: string;
     settings?: AirySettingsView;
+  }>;
+  listSkills: () => Promise<AirySkillView[]>;
+  importSkill: () => Promise<{
+    ok: boolean;
+    error?: string;
+    skill?: AirySkillView;
+    settings?: AirySettingsView;
+    skills?: AirySkillView[];
   }>;
   textTurn: (text: string) => Promise<AiryTurn>;
   voiceTurn: (audioBase64: string, filename: string) => Promise<AiryTurn>;

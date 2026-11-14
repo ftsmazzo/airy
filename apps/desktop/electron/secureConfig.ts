@@ -1,17 +1,21 @@
 /**
  * Config local segura — sem banco remoto.
  * Segredos: Electron safeStorage (Keychain no Mac / DPAPI no Windows).
- * Preferências (nome, Radar): JSON em userData.
- * .env continua como fallback/importação única.
  */
 import { app, safeStorage } from "electron";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
+  DEFAULT_ROUTER_MODEL,
+  DEFAULT_SYNTHESIS_MODEL,
   defaultEnabledPackages,
+  defaultUserSkillsDir,
   normalizeEnabledPackages,
+  normalizeMcpConnections,
   sanitizeSecret,
   type AiryEnv,
+  type McpConnectionPublic,
+  type McpConnectionSecret,
   type PackageId,
 } from "@airy/agent";
 
@@ -19,18 +23,18 @@ export type VoiceOption = { id: string; label: string };
 
 export type PublicSettings = {
   ownerName: string;
-  /** Nome pelo qual a IA se apresenta */
   assistantName: string;
   radarUrl: string;
-  /** Preferir app/PWA do Radar em vez do browser */
   radarOpenAsApp: boolean;
-  /** Nome do app local (ex.: atalho PWA) */
   radarAppName: string;
-  /** Pacotes ligados (ids) */
   enabledPackages: PackageId[];
+  /** Skills ligadas (ids); vazio = todas do catálogo */
+  enabledSkills: string[];
+  /** Roteador barato */
   openrouterModel: string;
+  /** Síntese final mais capaz */
+  synthesisModel: string;
   elevenVoiceId: string;
-  /** Catálogo para select no Ajustes (vem do provisionador) */
   voiceCatalog: VoiceOption[];
   elevenTtsModel: string;
   elevenStability: number;
@@ -38,7 +42,8 @@ export type PublicSettings = {
   elevenStyle: number;
   elevenSpeed: number;
   mcpBaseUrl: string;
-  /** Pasta vigiada (assistente pessoal) */
+  /** Conexões MCP (sem tokens) */
+  mcpConnections: McpConnectionPublic[];
   inboxEnabled: boolean;
   inboxPath: string;
   inboxAutoSummarizePdf: boolean;
@@ -48,8 +53,9 @@ export type SecretSettings = {
   openrouterApiKey: string;
   elevenApiKey: string;
   mcpToken: string;
-  /** Token de instalação — revalidado na VPS; sem ele o app bloqueia recursos. */
   licenseToken: string;
+  /** JSON [{id,token}] cifrado */
+  mcpConnectionTokensJson: string;
 };
 
 export type SettingsForm = PublicSettings & SecretSettings;
@@ -57,7 +63,7 @@ export type SettingsForm = PublicSettings & SecretSettings;
 type DiskFile = {
   version: 1;
   public: PublicSettings;
-  secrets: Partial<Record<keyof SecretSettings, string>>; // base64 ciphertext
+  secrets: Partial<Record<keyof SecretSettings, string>>;
 };
 
 const SECRET_KEYS: (keyof SecretSettings)[] = [
@@ -65,6 +71,7 @@ const SECRET_KEYS: (keyof SecretSettings)[] = [
   "elevenApiKey",
   "mcpToken",
   "licenseToken",
+  "mcpConnectionTokensJson",
 ];
 
 const DEFAULT_PUBLIC: PublicSettings = {
@@ -74,7 +81,9 @@ const DEFAULT_PUBLIC: PublicSettings = {
   radarOpenAsApp: false,
   radarAppName: "Radar Municipal",
   enabledPackages: defaultEnabledPackages(),
-  openrouterModel: "anthropic/claude-haiku-5.5",
+  enabledSkills: [],
+  openrouterModel: DEFAULT_ROUTER_MODEL,
+  synthesisModel: DEFAULT_SYNTHESIS_MODEL,
   elevenVoiceId: "",
   voiceCatalog: [],
   elevenTtsModel: "eleven_v4",
@@ -83,6 +92,7 @@ const DEFAULT_PUBLIC: PublicSettings = {
   elevenStyle: 0,
   elevenSpeed: 1,
   mcpBaseUrl: "https://ie-dados-mcp.kxryyk.easypanel.host",
+  mcpConnections: [],
   inboxEnabled: true,
   inboxPath: "",
   inboxAutoSummarizePdf: false,
@@ -95,7 +105,6 @@ function configPath(): string {
 function encrypt(plain: string): string {
   if (!plain) return "";
   if (!safeStorage.isEncryptionAvailable()) {
-    // fallback fraco só se SO não tiver cofre — ainda local, não commitado
     return `plain:${Buffer.from(plain, "utf8").toString("base64")}`;
   }
   return safeStorage.encryptString(plain).toString("base64");
@@ -130,7 +139,37 @@ function writeDisk(file: DiskFile): void {
   writeFileSync(p, JSON.stringify(file, null, 2), "utf8");
 }
 
-/** Modelos caros legados → default econômico (Haiku 5.5). */
+function parseMcpTokensJson(raw: string): McpConnectionSecret[] {
+  if (!raw?.trim()) return [];
+  try {
+    const arr = JSON.parse(raw) as McpConnectionSecret[];
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .map((t) => ({
+        id: String(t?.id || "").trim(),
+        token: sanitizeSecret(String(t?.token || "")),
+      }))
+      .filter((t) => t.id && t.token);
+  } catch {
+    return [];
+  }
+}
+
+function normalizeMcpPublic(raw: unknown): McpConnectionPublic[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((c) => ({
+      id: String((c as McpConnectionPublic)?.id || "")
+        .trim()
+        .replace(/[^a-zA-Z0-9_-]/g, "")
+        .slice(0, 32),
+      label: String((c as McpConnectionPublic)?.label || "").trim().slice(0, 80),
+      baseUrl: String((c as McpConnectionPublic)?.baseUrl || "").trim().replace(/\/$/, ""),
+      enabled: (c as McpConnectionPublic)?.enabled !== false,
+    }))
+    .filter((c) => c.id && c.baseUrl);
+}
+
 const LEGACY_EXPENSIVE_MODELS = new Set([
   "anthropic/claude-sonnet-4.5",
   "anthropic/claude-sonnet-4",
@@ -142,37 +181,39 @@ const LEGACY_EXPENSIVE_MODELS = new Set([
 
 export function loadSettings(): SettingsForm {
   const disk = readDisk();
-  const pub = {
+  const diskPub = disk?.public as Partial<PublicSettings> | undefined;
+  const pub: PublicSettings = {
     ...DEFAULT_PUBLIC,
-    ...(disk?.public || {}),
-    enabledPackages: normalizeEnabledPackages(
-      (disk?.public as PublicSettings | undefined)?.enabledPackages,
-    ),
-    radarOpenAsApp: Boolean(
-      (disk?.public as PublicSettings | undefined)?.radarOpenAsApp,
-    ),
+    ...(diskPub || {}),
+    enabledPackages: normalizeEnabledPackages(diskPub?.enabledPackages),
+    enabledSkills: Array.isArray(diskPub?.enabledSkills)
+      ? diskPub!.enabledSkills.map(String)
+      : [],
+    radarOpenAsApp: Boolean(diskPub?.radarOpenAsApp),
     radarAppName:
-      String((disk?.public as PublicSettings | undefined)?.radarAppName || "").trim() ||
-      DEFAULT_PUBLIC.radarAppName,
+      String(diskPub?.radarAppName || "").trim() || DEFAULT_PUBLIC.radarAppName,
+    synthesisModel:
+      String(diskPub?.synthesisModel || "").trim() || DEFAULT_SYNTHESIS_MODEL,
+    mcpConnections: normalizeMcpPublic(diskPub?.mcpConnections),
   };
-  // Migra Sonnet/Opus salvos → Haiku 5.5 (sem chamar saveSettings: evita recursão)
+
+  // Router caro → move para synthesis e usa Haiku no router
   if (LEGACY_EXPENSIVE_MODELS.has(pub.openrouterModel)) {
-    pub.openrouterModel = DEFAULT_PUBLIC.openrouterModel;
+    if (!diskPub?.synthesisModel) pub.synthesisModel = pub.openrouterModel;
+    pub.openrouterModel = DEFAULT_ROUTER_MODEL;
     try {
-      writeDisk({
-        version: 1,
-        public: pub,
-        secrets: disk?.secrets || {},
-      });
+      writeDisk({ version: 1, public: pub, secrets: disk?.secrets || {} });
     } catch {
-      /* memória já usa o default econômico nesta sessão */
+      /* ok */
     }
   }
+
   const secrets: SecretSettings = {
     openrouterApiKey: "",
     elevenApiKey: "",
     mcpToken: "",
     licenseToken: "",
+    mcpConnectionTokensJson: "",
   };
   for (const k of SECRET_KEYS) {
     secrets[k] = decrypt(disk?.secrets?.[k] || "");
@@ -183,9 +224,16 @@ export function loadSettings(): SettingsForm {
 export function saveSettings(partial: Partial<SettingsForm>): SettingsForm {
   const current = loadSettings();
   const next: SettingsForm = { ...current, ...partial };
-  // limpa colagem ruim (Bearer, aspas, espaços)
   for (const k of SECRET_KEYS) {
-    if (typeof next[k] === "string") next[k] = sanitizeSecret(next[k]);
+    if (typeof next[k] === "string") {
+      if (k === "mcpConnectionTokensJson") {
+        // keep JSON shape; sanitize tokens inside
+        const toks = parseMcpTokensJson(next[k]);
+        next[k] = toks.length ? JSON.stringify(toks) : "";
+      } else {
+        next[k] = sanitizeSecret(next[k]);
+      }
+    }
   }
 
   const secrets: DiskFile["secrets"] = {};
@@ -201,7 +249,11 @@ export function saveSettings(partial: Partial<SettingsForm>): SettingsForm {
     radarAppName:
       String(next.radarAppName || "").trim() || DEFAULT_PUBLIC.radarAppName,
     enabledPackages: normalizeEnabledPackages(next.enabledPackages),
-    openrouterModel: next.openrouterModel,
+    enabledSkills: Array.isArray(next.enabledSkills)
+      ? next.enabledSkills.map(String)
+      : [],
+    openrouterModel: next.openrouterModel || DEFAULT_ROUTER_MODEL,
+    synthesisModel: next.synthesisModel || DEFAULT_SYNTHESIS_MODEL,
     elevenVoiceId: next.elevenVoiceId,
     voiceCatalog: Array.isArray(next.voiceCatalog)
       ? next.voiceCatalog
@@ -217,6 +269,7 @@ export function saveSettings(partial: Partial<SettingsForm>): SettingsForm {
     elevenStyle: next.elevenStyle,
     elevenSpeed: next.elevenSpeed,
     mcpBaseUrl: next.mcpBaseUrl,
+    mcpConnections: normalizeMcpPublic(next.mcpConnections),
     inboxEnabled: Boolean(next.inboxEnabled),
     inboxPath: next.inboxPath || "",
     inboxAutoSummarizePdf: Boolean(next.inboxAutoSummarizePdf),
@@ -226,7 +279,6 @@ export function saveSettings(partial: Partial<SettingsForm>): SettingsForm {
   return next;
 }
 
-/** Importa .env uma vez para o cofre local (não apaga o .env). */
 export function importFromEnvIfEmpty(env: AiryEnv): boolean {
   const cur = loadSettings();
   const hasSecrets = Boolean(cur.openrouterApiKey && cur.elevenApiKey && cur.mcpToken);
@@ -240,6 +292,7 @@ export function importFromEnvIfEmpty(env: AiryEnv): boolean {
   if (env.radarUrl) next.radarUrl = env.radarUrl;
   if (env.ownerName) next.ownerName = env.ownerName;
   if (env.openrouterModel) next.openrouterModel = env.openrouterModel;
+  if (env.synthesisModel) next.synthesisModel = env.synthesisModel;
   if (env.elevenTtsModel) next.elevenTtsModel = env.elevenTtsModel;
   if (env.mcpBaseUrl) next.mcpBaseUrl = env.mcpBaseUrl;
   if (env.elevenStability != null) next.elevenStability = env.elevenStability;
@@ -253,9 +306,29 @@ export function importFromEnvIfEmpty(env: AiryEnv): boolean {
 }
 
 export function settingsToAiryEnv(s: SettingsForm, fallback: AiryEnv): AiryEnv {
+  const tokens = parseMcpTokensJson(s.mcpConnectionTokensJson);
+  // legado: se tem mcpToken e conexão ie-dados sem token na lista
+  if (s.mcpToken) {
+    const hasIe = tokens.some((t) => t.id === "ie-dados");
+    if (!hasIe) tokens.push({ id: "ie-dados", token: s.mcpToken });
+  }
+  let conns = normalizeMcpPublic(s.mcpConnections);
+  if (!conns.length && (s.mcpToken || s.mcpBaseUrl)) {
+    conns = [
+      {
+        id: "ie-dados",
+        label: "ie-dados",
+        baseUrl: s.mcpBaseUrl || "https://ie-dados-mcp.kxryyk.easypanel.host",
+        enabled: true,
+      },
+    ];
+  }
+
   return {
     openrouterApiKey: s.openrouterApiKey || fallback.openrouterApiKey,
-    openrouterModel: s.openrouterModel || fallback.openrouterModel,
+    openrouterModel: s.openrouterModel || fallback.openrouterModel || DEFAULT_ROUTER_MODEL,
+    synthesisModel:
+      s.synthesisModel || fallback.synthesisModel || DEFAULT_SYNTHESIS_MODEL,
     researchModel: fallback.researchModel || "perplexity/sonar",
     elevenApiKey: s.elevenApiKey || fallback.elevenApiKey,
     elevenVoiceId: s.elevenVoiceId || fallback.elevenVoiceId,
@@ -266,14 +339,23 @@ export function settingsToAiryEnv(s: SettingsForm, fallback: AiryEnv): AiryEnv {
     elevenSpeed: s.elevenSpeed ?? fallback.elevenSpeed,
     mcpToken: s.mcpToken || fallback.mcpToken,
     mcpBaseUrl: s.mcpBaseUrl || fallback.mcpBaseUrl,
+    mcpConnections: conns,
+    mcpConnectionTokens: tokens,
     radarUrl: s.radarUrl || fallback.radarUrl,
     radarOpenAsApp: Boolean(s.radarOpenAsApp),
     radarAppName: s.radarAppName || fallback.radarAppName,
     enabledPackages: normalizeEnabledPackages(s.enabledPackages),
+    enabledSkills: Array.isArray(s.enabledSkills) ? s.enabledSkills : [],
+    userSkillsDir: defaultUserSkillsDir(),
     personaPath: fallback.personaPath,
     ownerName: s.ownerName || fallback.ownerName,
     assistantName: s.assistantName || fallback.assistantName || "Airy",
   };
+}
+
+function hasAnyMcp(s: SettingsForm): boolean {
+  if (s.mcpToken) return true;
+  return parseMcpTokensJson(s.mcpConnectionTokensJson).length > 0;
 }
 
 export function settingsStatus(s: SettingsForm): {
@@ -287,28 +369,45 @@ export function settingsStatus(s: SettingsForm): {
   if (!s.openrouterApiKey) missing.push("OPENROUTER_API_KEY");
   if (!s.elevenApiKey) missing.push("ELEVENLABS_API_KEY");
   if (!s.elevenVoiceId) missing.push("ELEVENLABS_VOICE_ID");
-  if (!s.mcpToken) missing.push("MCP_TOKEN");
+  // MCP opcional (soft-fail), mas avisamos
+  if (!hasAnyMcp(s)) missing.push("MCP");
+  // MCP missing não bloqueia "configured" se o resto ok? Mantém bloqueio leve:
+  // na prática redeem sempre traz MCP. Soft-fail no agent.ready.
+  const hardMissing = missing.filter((m) => m !== "MCP");
   return {
-    configured: missing.length === 0,
+    configured: hardMissing.length === 0,
     missing,
     encryption: safeStorage.isEncryptionAvailable(),
     path: configPath(),
   };
 }
 
-/** Remove keys de API e licença (bloqueio / token inválido). */
 export function clearLicensedSecrets(): SettingsForm {
   return saveSettings({
     openrouterApiKey: "",
     elevenApiKey: "",
     mcpToken: "",
     licenseToken: "",
+    mcpConnectionTokensJson: "",
   });
 }
 
-/** Para a UI: não devolve segredos em claro, só se estão preenchidos. */
 export function settingsPublicView(s: SettingsForm) {
   const status = settingsStatus(s);
+  const tokenIds = new Set(parseMcpTokensJson(s.mcpConnectionTokensJson).map((t) => t.id));
+  if (s.mcpToken) tokenIds.add("ie-dados");
+  const mcpConnections = normalizeMcpConnections(
+    s.mcpConnections,
+    [...tokenIds].map((id) => ({ id, token: "x" })),
+    { baseUrl: s.mcpBaseUrl, token: s.mcpToken },
+  ).map((c) => ({
+    id: c.id,
+    label: c.label,
+    baseUrl: c.baseUrl,
+    enabled: c.enabled,
+    hasToken: tokenIds.has(c.id),
+  }));
+
   return {
     ...status,
     ownerName: s.ownerName,
@@ -317,7 +416,9 @@ export function settingsPublicView(s: SettingsForm) {
     radarOpenAsApp: Boolean(s.radarOpenAsApp),
     radarAppName: s.radarAppName || DEFAULT_PUBLIC.radarAppName,
     enabledPackages: normalizeEnabledPackages(s.enabledPackages),
+    enabledSkills: Array.isArray(s.enabledSkills) ? s.enabledSkills : [],
     openrouterModel: s.openrouterModel,
+    synthesisModel: s.synthesisModel || DEFAULT_SYNTHESIS_MODEL,
     elevenVoiceId: s.elevenVoiceId,
     voiceCatalog: Array.isArray(s.voiceCatalog) ? s.voiceCatalog : [],
     elevenTtsModel: s.elevenTtsModel,
@@ -326,12 +427,29 @@ export function settingsPublicView(s: SettingsForm) {
     elevenStyle: s.elevenStyle,
     elevenSpeed: s.elevenSpeed,
     mcpBaseUrl: s.mcpBaseUrl,
+    mcpConnections,
     hasOpenrouterApiKey: Boolean(s.openrouterApiKey),
     hasElevenApiKey: Boolean(s.elevenApiKey),
-    hasMcpToken: Boolean(s.mcpToken),
+    hasMcpToken: hasAnyMcp(s),
     hasLicenseToken: Boolean(s.licenseToken),
     inboxEnabled: Boolean(s.inboxEnabled),
     inboxPath: s.inboxPath || "",
     inboxAutoSummarizePdf: Boolean(s.inboxAutoSummarizePdf),
   };
+}
+
+/** Merge tokens MCP sem apagar os que a UI não reenviou. */
+export function mergeMcpConnectionTokens(
+  currentJson: string,
+  updates: Array<{ id: string; token?: string }>,
+): string {
+  const map = new Map(parseMcpTokensJson(currentJson).map((t) => [t.id, t.token]));
+  for (const u of updates) {
+    const id = String(u.id || "").trim();
+    if (!id) continue;
+    const tok = sanitizeSecret(String(u.token || ""));
+    if (tok) map.set(id, tok);
+  }
+  const arr = [...map.entries()].map(([id, token]) => ({ id, token }));
+  return arr.length ? JSON.stringify(arr) : "";
 }

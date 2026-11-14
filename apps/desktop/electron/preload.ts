@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld("airy", {
       error?: string;
       settings?: Record<string, unknown>;
     }>,
+  listSkills: () => ipcRenderer.invoke("airy:skills-list"),
+  importSkill: () => ipcRenderer.invoke("airy:skills-import"),
   textTurn: (text: string) =>
     ipcRenderer.invoke("airy:text-turn", text) as Promise<{
       userText: string;

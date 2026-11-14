@@ -11,7 +11,6 @@ import {
 import {
   defaultEnabledPackages,
   normalizeEnabledPackages,
-  PACKAGE_CATALOG,
   type PackageId,
 } from "./packages.js";
 import {
@@ -30,20 +29,40 @@ import {
   rememberFact,
 } from "./memory.js";
 import { NOTES_TOOL_DEFS, saveNote } from "./notes.js";
-import { friendlyMcpError, McpHttpClient } from "./mcp.js";
+import {
+  McpHub,
+  normalizeMcpConnections,
+  type McpConnectionFull,
+  type McpConnectionPublic,
+  type McpConnectionSecret,
+} from "./mcpHub.js";
 import {
   buildSystemPrompt,
   clipForSpeech,
-  loadIeDadosSkill,
   loadPersona,
 } from "./prompt.js";
+import {
+  defaultUserSkillsDir,
+  loadEnabledSkillsMarkdown,
+  listSkills,
+  type SkillMeta,
+} from "./skills.js";
+import {
+  DEFAULT_ROUTER_MODEL,
+  DEFAULT_SYNTHESIS_MODEL,
+  isSimpleOpenTrace,
+  needsSynthesis,
+  synthesisUserNudge,
+} from "./orchestrator.js";
 import { friendlyApiError, sanitizeSecret } from "./keys.js";
 import { isStopIntent, stopAck } from "./session.js";
 
 export type AiryEnv = {
   openrouterApiKey: string;
+  /** Modelo barato — roteamento + tools */
   openrouterModel: string;
-  /** Default perplexity/sonar — pesquisa web pontual */
+  /** Modelo mais capaz — síntese final quando preciso */
+  synthesisModel?: string;
   researchModel?: string;
   elevenApiKey: string;
   elevenVoiceId: string;
@@ -52,17 +71,20 @@ export type AiryEnv = {
   elevenSimilarity?: number;
   elevenStyle?: number;
   elevenSpeed?: number;
+  /** Legado: 1ª conexão MCP */
   mcpToken: string;
   mcpBaseUrl: string;
+  mcpConnections?: McpConnectionPublic[];
+  mcpConnectionTokens?: McpConnectionSecret[];
   radarUrl: string;
-  /** Preferir app/PWA instalado do Radar em vez do browser */
   radarOpenAsApp?: boolean;
   radarAppName?: string;
-  /** Pacotes ligados nos Ajustes (ids do catálogo) */
   enabledPackages?: PackageId[];
+  /** ids das skills ligadas; vazio = todas */
+  enabledSkills?: string[];
+  userSkillsDir?: string;
   personaPath?: string;
   ownerName?: string;
-  /** Nome pelo qual a IA se apresenta (Ajustes) */
   assistantName?: string;
 };
 
@@ -90,7 +112,6 @@ function numEnv(value: string | undefined, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
-/** Confirmação local quando o LLM abre algo e não devolve texto. */
 function confirmFromTools(trace: string[], results: string[]): string {
   if (trace.includes("open_radar_municipal")) return "Radar aberto.";
   if (trace.includes("open_youtube")) return "YouTube aberto.";
@@ -147,11 +168,11 @@ export function loadEnvFromProcess(): AiryEnv {
   const e = process.env;
   return {
     openrouterApiKey: sanitizeSecret(e.OPENROUTER_API_KEY),
-    openrouterModel: clean(e.OPENROUTER_MODEL) || "anthropic/claude-haiku-5.5",
+    openrouterModel: clean(e.OPENROUTER_MODEL) || DEFAULT_ROUTER_MODEL,
+    synthesisModel: clean(e.AIRY_SYNTHESIS_MODEL) || DEFAULT_SYNTHESIS_MODEL,
     researchModel: clean(e.AIRY_RESEARCH_MODEL) || "perplexity/sonar",
     elevenApiKey: sanitizeSecret(e.ELEVENLABS_API_KEY),
     elevenVoiceId: clean(e.ELEVENLABS_VOICE_ID),
-    // Prefer ELEVENLABS_MODEL_ID (mesmo nome da conta Pro); fallback legado TTS_MODEL
     elevenTtsModel:
       clean(e.ELEVENLABS_MODEL_ID) ||
       clean(e.ELEVENLABS_TTS_MODEL) ||
@@ -170,29 +191,26 @@ export function loadEnvFromProcess(): AiryEnv {
     personaPath: clean(e.AIRY_PERSONA_PATH),
     ownerName: clean(e.AIRY_OWNER_NAME),
     assistantName: clean(e.AIRY_ASSISTANT_NAME) || "Airy",
+    userSkillsDir: defaultUserSkillsDir(),
   };
 }
 
 export class AiryAgent {
   private env: AiryEnv;
-  private mcp: McpHttpClient;
+  private mcpHub = new McpHub();
   private desktop: DesktopConfig;
   private systemPrompt = "";
   private personaPath = "";
   private history: ChatMessage[] = [];
-  private mcpToolsOpenAI: Array<{
-    type: "function";
-    function: { name: string; description?: string; parameters?: Record<string, unknown> };
-  }> = [];
-  private mcpStatus: {
-    ok: boolean;
-    toolCount: number;
-    error?: string;
-  } = { ok: false, toolCount: 0 };
+  private mcpConnections: McpConnectionFull[] = [];
 
   constructor(env: AiryEnv) {
     this.env = env;
-    this.mcp = new McpHttpClient({ baseUrl: env.mcpBaseUrl, token: env.mcpToken });
+    this.mcpConnections = normalizeMcpConnections(
+      env.mcpConnections,
+      env.mcpConnectionTokens,
+      { baseUrl: env.mcpBaseUrl, token: env.mcpToken },
+    );
     this.desktop = {
       radarUrl: env.radarUrl,
       radarOpenAsApp: Boolean(env.radarOpenAsApp),
@@ -203,16 +221,26 @@ export class AiryAgent {
   }
 
   getMcpStatus() {
-    return { ...this.mcpStatus };
+    return this.mcpHub.getStatus();
   }
 
-  /** Recarrega persona/AIRY_PERSONA.md (ou AIRY_PERSONA_PATH). */
+  listSkills(): SkillMeta[] {
+    return listSkills({
+      userSkillsDir: this.env.userSkillsDir || defaultUserSkillsDir(),
+      enabledSkills: this.env.enabledSkills,
+    });
+  }
+
   reloadPersona(): { path: string } {
     const persona = loadPersona(this.env.personaPath);
     this.personaPath = persona.path;
+    const skillsMd = loadEnabledSkillsMarkdown({
+      userSkillsDir: this.env.userSkillsDir || defaultUserSkillsDir(),
+      enabledSkills: this.env.enabledSkills,
+    });
     this.systemPrompt = buildSystemPrompt(
       persona.text,
-      loadIeDadosSkill(),
+      skillsMd,
       this.env.ownerName || "",
       memoryPromptBlock(12),
       this.env.assistantName || "Airy",
@@ -223,7 +251,6 @@ export class AiryAgent {
     return { path: persona.path };
   }
 
-  /** Atualiza o bloco de memória no system prompt (após remember/forget). */
   refreshMemoryPrompt(): void {
     this.reloadPersona();
   }
@@ -235,36 +262,8 @@ export class AiryAgent {
   async ready(): Promise<void> {
     if (!this.env.openrouterApiKey) throw new Error("OPENROUTER_API_KEY ausente");
     if (!this.env.elevenApiKey) throw new Error("ELEVENLABS_API_KEY ausente");
-    if (!this.env.mcpToken) throw new Error("MCP_TOKEN ausente");
-
-    // MCP soft-fail: voz/desktop seguem; dados públicos ficam off até voltar
-    try {
-      const health = await this.mcp.health();
-      if (!health.ok) {
-        throw new Error(health.error || "health falhou");
-      }
-      await this.mcp.initialize();
-      const tools = (await this.mcp.listTools()) || [];
-      this.mcpToolsOpenAI = tools.map((t) => ({
-        type: "function" as const,
-        function: {
-          name: t.name,
-          description: t.description || t.name,
-          parameters: (t.inputSchema as Record<string, unknown>) || {
-            type: "object",
-            properties: {},
-          },
-        },
-      }));
-      this.mcpStatus = { ok: true, toolCount: tools.length };
-    } catch (e) {
-      this.mcpToolsOpenAI = [];
-      this.mcpStatus = {
-        ok: false,
-        toolCount: 0,
-        error: friendlyMcpError(e),
-      };
-    }
+    // MCP soft-fail — voz segue sem conexões
+    await this.mcpHub.ready(this.mcpConnections);
   }
 
   private allTools() {
@@ -276,7 +275,7 @@ export class AiryAgent {
       ...PDF_TOOL_DEFS,
       ...MEMORY_TOOL_DEFS,
       ...NOTES_TOOL_DEFS,
-      ...this.mcpToolsOpenAI,
+      ...this.mcpHub.getTools(),
     ];
   }
 
@@ -334,7 +333,10 @@ export class AiryAgent {
           String(args.path || ""),
           {
             openrouterApiKey: this.env.openrouterApiKey,
-            openrouterModel: this.env.openrouterModel,
+            openrouterModel:
+              this.env.synthesisModel ||
+              this.env.openrouterModel ||
+              DEFAULT_SYNTHESIS_MODEL,
           },
           args.focus ? String(args.focus) : undefined,
         );
@@ -362,9 +364,11 @@ export class AiryAgent {
 
   private async chatCompletion(
     messages: ChatMessage[],
-    opts?: { tools?: boolean },
+    opts?: { tools?: boolean; model?: string },
   ): Promise<{ message: ChatMessage }> {
     const useTools = opts?.tools !== false;
+    const model =
+      opts?.model || this.env.openrouterModel || DEFAULT_ROUTER_MODEL;
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -374,9 +378,9 @@ export class AiryAgent {
         "X-Title": "Airy",
       },
       body: JSON.stringify({
-        model: this.env.openrouterModel,
+        model,
         messages,
-        temperature: 0.3,
+        temperature: useTools ? 0.3 : 0.4,
         ...(useTools
           ? { tools: this.allTools(), tool_choice: "auto" }
           : { tool_choice: "none" }),
@@ -431,18 +435,22 @@ export class AiryAgent {
     let guard = 0;
     let finalText = "";
     const toolResults: string[] = [];
+    const routerModel = this.env.openrouterModel || DEFAULT_ROUTER_MODEL;
+    const synthModel =
+      this.env.synthesisModel || DEFAULT_SYNTHESIS_MODEL;
 
+    // Camada 1: roteador barato com tools
     while (guard++ < 8) {
-      const { message } = await this.chatCompletion(this.history);
+      const { message } = await this.chatCompletion(this.history, {
+        model: routerModel,
+      });
       this.history.push(message);
 
       const calls = message.tool_calls || [];
       const content = (message.content || "").trim();
       if (content) finalText = content;
 
-      if (!calls.length) {
-        break;
-      }
+      if (!calls.length) break;
 
       for (const call of calls) {
         const name = call.function.name;
@@ -456,16 +464,8 @@ export class AiryAgent {
         let result: string;
         if (LOCAL_TOOL_NAMES.has(name)) {
           result = await this.runLocalTool(name, args);
-        } else if (!this.mcpStatus.ok) {
-          result =
-            this.mcpStatus.error ||
-            "MCP offline. Dados públicos indisponíveis; tente de novo depois.";
         } else {
-          try {
-            result = await this.mcp.callTool(name, args);
-          } catch (e) {
-            result = friendlyMcpError(e);
-          }
+          result = await this.mcpHub.callTool(name, args);
         }
         toolResults.push(result);
         this.history.push({
@@ -477,30 +477,45 @@ export class AiryAgent {
       }
     }
 
-    // Modelos às vezes fecham o turno de tool com content vazio (comum após open_*).
-    if (!finalText && toolTrace.length) {
+    // Camada 2: síntese forte só quando faz sentido
+    if (needsSynthesis(toolTrace)) {
+      try {
+        this.history.push({ role: "user", content: synthesisUserNudge() });
+        const { message } = await this.chatCompletion(this.history, {
+          tools: false,
+          model: synthModel,
+        });
+        this.history.push(message);
+        const synth = (message.content || "").trim();
+        if (synth) finalText = synth;
+        toolTrace.push("synth");
+      } catch {
+        /* cai no fallback */
+      }
+    } else if (!finalText && isSimpleOpenTrace(toolTrace)) {
+      finalText = confirmFromTools(toolTrace, toolResults);
+    } else if (!finalText && toolTrace.length) {
       try {
         this.history.push({
           role: "user",
           content: "Confirme em UMA frase curta o que acabou de fazer. Sem tools.",
         });
-        const { message } = await this.chatCompletion(this.history, { tools: false });
+        const { message } = await this.chatCompletion(this.history, {
+          tools: false,
+          model: routerModel,
+        });
         this.history.push(message);
         finalText = (message.content || "").trim();
       } catch {
-        /* cai no fallback local */
+        /* fallback local */
       }
     }
 
     if (!finalText) finalText = confirmFromTools(toolTrace, toolResults);
     finalText = clipForSpeech(finalText);
 
-    // evita histórico infinito
     if (this.history.length > 40) {
-      this.history = [
-        this.history[0],
-        ...this.history.slice(-30),
-      ];
+      this.history = [this.history[0], ...this.history.slice(-30)];
     }
 
     const audioMp3 = await this.speak(finalText);
@@ -532,12 +547,33 @@ export class AiryAgent {
 
 export { McpHttpClient } from "./mcp.js";
 export {
+  McpHub,
+  normalizeMcpConnections,
+  type McpConnectionPublic,
+  type McpConnectionSecret,
+  type McpConnectionFull,
+} from "./mcpHub.js";
+export {
   PACKAGE_CATALOG,
   defaultEnabledPackages,
   normalizeEnabledPackages,
   type PackageId,
   type PackageDef,
 } from "./packages.js";
+export {
+  listSkills,
+  loadEnabledSkillsMarkdown,
+  importSkillFile,
+  ensureUserSkillsDir,
+  defaultUserSkillsDir,
+  type SkillMeta,
+} from "./skills.js";
+export {
+  DEFAULT_ROUTER_MODEL,
+  DEFAULT_SYNTHESIS_MODEL,
+  needsSynthesis,
+  isSimpleOpenTrace,
+} from "./orchestrator.js";
 export {
   openRadarMunicipal,
   openSpotify,

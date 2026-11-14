@@ -94,11 +94,29 @@ export async function redeemInstallToken(
   }
 
   const p = result.payload;
+  const mcpToken = (p.secrets?.mcpToken || "").trim();
+  const mcpBaseUrl =
+    (p.public?.mcpBaseUrl || "").trim() ||
+    "https://ie-dados-mcp.kxryyk.easypanel.host";
   const partial: Partial<SettingsForm> = {
     ...(p.secrets || {}),
     ...(p.public || {}),
     licenseToken: (token || "").trim(),
   };
+  if (mcpToken) {
+    partial.mcpConnections = [
+      {
+        id: "ie-dados",
+        label: "ie-dados",
+        baseUrl: mcpBaseUrl,
+        enabled: true,
+      },
+    ];
+    partial.mcpConnectionTokensJson = JSON.stringify([
+      { id: "ie-dados", token: mcpToken },
+    ]);
+    partial.mcpBaseUrl = mcpBaseUrl;
+  }
   return { ok: true, partial };
 }
 

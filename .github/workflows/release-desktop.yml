@@ -1,0 +1,65 @@
+name: Release desktop (Win + Mac)
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w @airy/voice && npm run build -w @airy/agent
+      - run: npm run build -w @airy/desktop
+      - run: npm run dist:win -w @airy/desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: airy-windows
+          path: |
+            release/Airy-Setup-*.exe
+            release/*.blockmap
+
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w @airy/voice && npm run build -w @airy/agent
+      - run: npm run build -w @airy/desktop
+      - run: npm run dist:mac -w @airy/desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: airy-macos
+          path: |
+            release/Airy-*.dmg
+            release/*.blockmap
+
+  publish-release:
+    needs: [build-win, build-mac]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/airy-windows/*
+            dist/airy-macos/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -97,10 +97,12 @@ ${memoryBlock}
 - Pasta vigiada ~/Airy/inbox: se avisarem de arquivo novo, pode open_pdf / summarize_pdf.
 
 ## Desktop / notícias / pesquisa / PDF
-- open_radar_municipal, open_youtube, open_spotify, open_url, open_app (allowlist).
+- open_radar_municipal, open_youtube, open_spotify, open_url, open_app (allowlist + toggles de Pacotes).
 - open_channel_live — CNN / GloboNews ao vivo no YouTube.
 - read_news — resuma em 2 frases.
 - Se pedirem “aplicativo web” / app instalado → open_app; site/link → open_url.
+- “Abre o Radar” / “Radar Municipal” → open_radar_municipal (URL da config; app vs browser é preferência local).
+- Se a tool disser que algo está “desligado nos Pacotes”, fale isso em 1 frase — não invente workaround.
 - research_web (Perplexity/Sonar) — fatos; na voz: 2 frases.
 - create_html_artifact — relatório HTML local + abre no browser.
 - open_pdf / summarize_pdf — paths na pasta do usuário.

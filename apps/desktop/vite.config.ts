@@ -17,6 +17,15 @@ const mainExternals = [
 ];
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      // catálogo puro (sem Node) para a UI de Pacotes
+      "@airy/packages-catalog": path.join(
+        repoRoot,
+        "packages/agent/src/packages.ts",
+      ),
+    },
+  },
   plugins: [
     react(),
     electron({

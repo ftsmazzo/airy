@@ -1,10 +1,22 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import {
+  disabledPackageMessage,
+  isPackageEnabled,
+  packageForApp,
+  packageForHost,
+  type PackageId,
+} from "./packages.js";
 
 const execFileAsync = promisify(execFile);
 
 export type DesktopConfig = {
   radarUrl: string;
+  /** Se true, tenta app/PWA instalado antes do browser */
+  radarOpenAsApp?: boolean;
+  /** Nome do app local do Radar (opcional) */
+  radarAppName?: string;
+  enabledPackages?: PackageId[];
 };
 
 const YOUTUBE = "https://www.youtube.com";
@@ -63,55 +75,43 @@ function allowlisted(url: string, radarUrl: string): boolean {
     return false;
   }
   if (u.protocol !== "http:" && u.protocol !== "https:") return false;
-  const allowedHosts = new Set<string>([
-    "www.youtube.com",
-    "youtube.com",
-    "youtu.be",
-    "m.youtube.com",
-    "open.spotify.com",
-    "spotify.com",
-    "g1.globo.com",
-    "www.uol.com.br",
-    "uol.com.br",
-    "www.bbc.com",
-    "web.whatsapp.com",
-    "app.slack.com",
-    "www.notion.so",
-    "notion.so",
-    "discord.com",
-    "chatgpt.com",
-    "chat.openai.com",
-    "claude.ai",
-    "www.claude.ai",
-    "perplexity.ai",
-    "www.perplexity.ai",
-    "www.google.com",
-    "google.com",
-    "gemini.google.com",
-    "www.pinterest.com",
-    "pinterest.com",
-    "br.pinterest.com",
-    "www.linkedin.com",
-    "linkedin.com",
-    "www.canva.com",
-    "canva.com",
-    "www.capcut.com",
-    "capcut.com",
-    "www.lovable.dev",
-    "lovable.dev",
-    "www.manus.im",
-    "manus.im",
-    "cnn.com",
-    "www.cnn.com",
-    "edition.cnn.com",
-  ]);
+
   try {
-    if (radarUrl) allowedHosts.add(new URL(radarUrl).host);
+    if (radarUrl && new URL(radarUrl).host === u.host) return true;
   } catch {
     /* ignore */
   }
-  allowedHosts.add("ie-dados-mcp.kxryyk.easypanel.host");
-  return allowedHosts.has(u.host);
+
+  if (packageForHost(u.host)) return true;
+
+  // MCP host (não é pacote de UI)
+  if (u.host === "ie-dados-mcp.kxryyk.easypanel.host") return true;
+  return false;
+}
+
+function assertPackageForUrl(url: string, cfg: DesktopConfig): string | null {
+  let host = "";
+  try {
+    host = new URL(url).host;
+  } catch {
+    return "URL inválida.";
+  }
+  try {
+    if (cfg.radarUrl && new URL(cfg.radarUrl).host === host) {
+      if (!isPackageEnabled(cfg.enabledPackages, "radar")) {
+        return disabledPackageMessage("radar");
+      }
+      return null;
+    }
+  } catch {
+    /* ignore */
+  }
+  const pkg = packageForHost(host);
+  if (!pkg) return null; // allowlist já filtraria
+  if (!isPackageEnabled(cfg.enabledPackages, pkg)) {
+    return disabledPackageMessage(pkg);
+  }
+  return null;
 }
 
 async function openUrl(url: string): Promise<string> {
@@ -146,33 +146,64 @@ function normalizeAppKey(name: string): string {
 }
 
 export async function openRadarMunicipal(cfg: DesktopConfig): Promise<string> {
+  if (!isPackageEnabled(cfg.enabledPackages, "radar")) {
+    return disabledPackageMessage("radar");
+  }
   if (!cfg.radarUrl) {
     return "Radar sem URL. Configure em Ajustes (tecla ,).";
   }
   if (!allowlisted(cfg.radarUrl, cfg.radarUrl)) {
     return "URL do Radar fora da allowlist.";
   }
+
+  if (cfg.radarOpenAsApp) {
+    const appName = (cfg.radarAppName || "Radar Municipal").trim();
+    if (process.platform === "darwin") {
+      try {
+        await execFileAsync("open", ["-a", appName]);
+        return `App do Radar aberto (${appName}).`;
+      } catch {
+        /* fallback browser */
+      }
+    }
+    if (process.platform === "win32") {
+      try {
+        await execFileAsync("cmd", ["/c", "start", "", appName]);
+        return `App do Radar aberto (${appName}).`;
+      } catch {
+        /* fallback browser */
+      }
+    }
+  }
+
   return openUrl(cfg.radarUrl);
 }
 
-export async function openYoutube(): Promise<string> {
+export async function openYoutube(cfg?: DesktopConfig): Promise<string> {
+  if (cfg && !isPackageEnabled(cfg.enabledPackages, "youtube")) {
+    return disabledPackageMessage("youtube");
+  }
   return openUrl(YOUTUBE);
 }
 
-export async function openSpotify(): Promise<string> {
-  return openNamedApp("spotify");
+export async function openSpotify(cfg?: DesktopConfig): Promise<string> {
+  return openNamedApp("spotify", cfg);
 }
 
 export async function openAllowedUrl(url: string, cfg: DesktopConfig): Promise<string> {
   if (!allowlisted(url, cfg.radarUrl)) {
     return `URL bloqueada (fora da allowlist): ${url}`;
   }
+  const blocked = assertPackageForUrl(url, cfg);
+  if (blocked) return blocked;
   return openUrl(url);
 }
 
-export async function openNamedApp(appName: string): Promise<string> {
+export async function openNamedApp(
+  appName: string,
+  cfg?: DesktopConfig,
+): Promise<string> {
   const key = normalizeAppKey(appName);
-  // aliases
   const aliases: Record<string, string> = {
     googlechrome: "chrome",
     navegador: "chrome",
@@ -186,6 +217,11 @@ export async function openNamedApp(appName: string): Promise<string> {
   const spec = APP_ALLOWLIST[canon];
   if (!spec) {
     return `App não está na allowlist: ${appName}. Permitidos: ${Object.keys(APP_ALLOWLIST).join(", ")}.`;
+  }
+
+  const pkg = packageForApp(canon);
+  if (pkg && cfg && !isPackageEnabled(cfg.enabledPackages, pkg)) {
+    return disabledPackageMessage(pkg);
   }
 
   if (process.platform === "darwin") {
@@ -221,7 +257,8 @@ export const DESKTOP_TOOL_DEFS = [
     type: "function" as const,
     function: {
       name: "open_radar_municipal",
-      description: "Abre o atalho Radar Municipal no navegador padrão.",
+      description:
+        "Abre o Radar / atalho principal. Se o usuário pedir o app do Radar, ainda use esta tool (a preferência app vs browser vem da config). URL só da config do usuário.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
     },
   },
@@ -246,7 +283,7 @@ export const DESKTOP_TOOL_DEFS = [
     function: {
       name: "open_url",
       description:
-        "Abre uma URL http(s) se estiver na allowlist (ChatGPT, Claude, Google, Gemini, Perplexity, Notion, Canva, LinkedIn, Pinterest, YouTube, Spotify, Radar, G1, CNN, etc.).",
+        "Abre uma URL http(s) se estiver na allowlist e o pacote estiver ligado (ChatGPT, Claude, Google, Gemini, Perplexity, Notion, Canva, LinkedIn, Pinterest, YouTube, Spotify, Radar, G1, CNN, etc.).",
       parameters: {
         type: "object",
         properties: {
@@ -262,7 +299,7 @@ export const DESKTOP_TOOL_DEFS = [
     function: {
       name: "open_app",
       description:
-        "Abre um aplicativo instalado da allowlist (chrome, spotify, slack, notion, whatsapp, telegram, discord, vscode, cursor, canva, capcut, obs, safari, edge, finder/explorer, terminal, notes, mail, calendar).",
+        "Abre um aplicativo instalado da allowlist (chrome, spotify, slack, notion, whatsapp, telegram, discord, vscode, cursor, canva, capcut, obs, safari, edge, finder/explorer, terminal, notes, mail, calendar). Use quando pedirem o app/PWA, não o site.",
       parameters: {
         type: "object",
         properties: {

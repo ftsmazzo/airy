@@ -7,8 +7,13 @@
 import { app, safeStorage } from "electron";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { sanitizeSecret } from "@airy/agent";
-import type { AiryEnv } from "@airy/agent";
+import {
+  defaultEnabledPackages,
+  normalizeEnabledPackages,
+  sanitizeSecret,
+  type AiryEnv,
+  type PackageId,
+} from "@airy/agent";
 
 export type VoiceOption = { id: string; label: string };
 
@@ -17,6 +22,12 @@ export type PublicSettings = {
   /** Nome pelo qual a IA se apresenta */
   assistantName: string;
   radarUrl: string;
+  /** Preferir app/PWA do Radar em vez do browser */
+  radarOpenAsApp: boolean;
+  /** Nome do app local (ex.: atalho PWA) */
+  radarAppName: string;
+  /** Pacotes ligados (ids) */
+  enabledPackages: PackageId[];
   openrouterModel: string;
   elevenVoiceId: string;
   /** Catálogo para select no Ajustes (vem do provisionador) */
@@ -60,6 +71,9 @@ const DEFAULT_PUBLIC: PublicSettings = {
   ownerName: "",
   assistantName: "Airy",
   radarUrl: "",
+  radarOpenAsApp: false,
+  radarAppName: "Radar Municipal",
+  enabledPackages: defaultEnabledPackages(),
   openrouterModel: "anthropic/claude-haiku-5.5",
   elevenVoiceId: "",
   voiceCatalog: [],
@@ -128,7 +142,19 @@ const LEGACY_EXPENSIVE_MODELS = new Set([
 
 export function loadSettings(): SettingsForm {
   const disk = readDisk();
-  const pub = { ...DEFAULT_PUBLIC, ...(disk?.public || {}) };
+  const pub = {
+    ...DEFAULT_PUBLIC,
+    ...(disk?.public || {}),
+    enabledPackages: normalizeEnabledPackages(
+      (disk?.public as PublicSettings | undefined)?.enabledPackages,
+    ),
+    radarOpenAsApp: Boolean(
+      (disk?.public as PublicSettings | undefined)?.radarOpenAsApp,
+    ),
+    radarAppName:
+      String((disk?.public as PublicSettings | undefined)?.radarAppName || "").trim() ||
+      DEFAULT_PUBLIC.radarAppName,
+  };
   // Migra Sonnet/Opus salvos → Haiku 5.5 (sem chamar saveSettings: evita recursão)
   if (LEGACY_EXPENSIVE_MODELS.has(pub.openrouterModel)) {
     pub.openrouterModel = DEFAULT_PUBLIC.openrouterModel;
@@ -171,6 +197,10 @@ export function saveSettings(partial: Partial<SettingsForm>): SettingsForm {
     ownerName: next.ownerName,
     assistantName: next.assistantName || DEFAULT_PUBLIC.assistantName,
     radarUrl: next.radarUrl,
+    radarOpenAsApp: Boolean(next.radarOpenAsApp),
+    radarAppName:
+      String(next.radarAppName || "").trim() || DEFAULT_PUBLIC.radarAppName,
+    enabledPackages: normalizeEnabledPackages(next.enabledPackages),
     openrouterModel: next.openrouterModel,
     elevenVoiceId: next.elevenVoiceId,
     voiceCatalog: Array.isArray(next.voiceCatalog)
@@ -237,6 +267,9 @@ export function settingsToAiryEnv(s: SettingsForm, fallback: AiryEnv): AiryEnv {
     mcpToken: s.mcpToken || fallback.mcpToken,
     mcpBaseUrl: s.mcpBaseUrl || fallback.mcpBaseUrl,
     radarUrl: s.radarUrl || fallback.radarUrl,
+    radarOpenAsApp: Boolean(s.radarOpenAsApp),
+    radarAppName: s.radarAppName || fallback.radarAppName,
+    enabledPackages: normalizeEnabledPackages(s.enabledPackages),
     personaPath: fallback.personaPath,
     ownerName: s.ownerName || fallback.ownerName,
   };
@@ -280,6 +313,9 @@ export function settingsPublicView(s: SettingsForm) {
     ownerName: s.ownerName,
     assistantName: s.assistantName || "Airy",
     radarUrl: s.radarUrl,
+    radarOpenAsApp: Boolean(s.radarOpenAsApp),
+    radarAppName: s.radarAppName || DEFAULT_PUBLIC.radarAppName,
+    enabledPackages: normalizeEnabledPackages(s.enabledPackages),
     openrouterModel: s.openrouterModel,
     elevenVoiceId: s.elevenVoiceId,
     voiceCatalog: Array.isArray(s.voiceCatalog) ? s.voiceCatalog : [],

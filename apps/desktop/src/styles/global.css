@@ -329,6 +329,28 @@ body,
   margin: 0;
 }
 
+.setup-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  opacity: 0.75;
+  line-height: 1.35;
+}
+
+.setup-packages {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 10px;
+  max-height: 220px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+@media (max-width: 520px) {
+  .setup-packages {
+    grid-template-columns: 1fr;
+  }
+}
+
 .setup-path-row {
   display: grid;
   grid-template-columns: 1fr auto;

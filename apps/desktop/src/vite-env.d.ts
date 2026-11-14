@@ -15,6 +15,9 @@ export type AirySettingsView = {
   ownerName: string;
   assistantName: string;
   radarUrl: string;
+  radarOpenAsApp: boolean;
+  radarAppName: string;
+  enabledPackages: string[];
   openrouterModel: string;
   elevenVoiceId: string;
   voiceCatalog: Array<{ id: string; label: string }>;

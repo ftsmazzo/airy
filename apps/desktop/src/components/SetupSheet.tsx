@@ -1,4 +1,8 @@
 import { useEffect, useState } from "react";
+import {
+  PACKAGE_CATALOG,
+  type PackageId,
+} from "@airy/packages-catalog";
 import type { AirySettingsView } from "../vite-env";
 
 type Props = {
@@ -8,11 +12,16 @@ type Props = {
   onSaved: (settings: AirySettingsView) => void;
 };
 
+const ALL_PACKAGE_IDS = PACKAGE_CATALOG.map((p) => p.id);
+
 export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
   const [ownerName, setOwnerName] = useState("");
   const [assistantName, setAssistantName] = useState("Airy");
   const [installToken, setInstallToken] = useState("");
   const [radarUrl, setRadarUrl] = useState("");
+  const [radarOpenAsApp, setRadarOpenAsApp] = useState(false);
+  const [radarAppName, setRadarAppName] = useState("Radar Municipal");
+  const [enabledPackages, setEnabledPackages] = useState<string[]>(ALL_PACKAGE_IDS);
   const [openrouterModel, setOpenrouterModel] = useState(
     "anthropic/claude-haiku-5.5",
   );
@@ -41,6 +50,13 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
       setOwnerName(s.ownerName || "");
       setAssistantName(s.assistantName || "Airy");
       setRadarUrl(s.radarUrl || "");
+      setRadarOpenAsApp(Boolean(s.radarOpenAsApp));
+      setRadarAppName(s.radarAppName || "Radar Municipal");
+      setEnabledPackages(
+        Array.isArray(s.enabledPackages) && s.enabledPackages.length
+          ? s.enabledPackages
+          : ALL_PACKAGE_IDS,
+      );
       setOpenrouterModel(s.openrouterModel || "anthropic/claude-haiku-5.5");
       setElevenVoiceId(s.elevenVoiceId || "");
       setVoiceCatalog(Array.isArray(s.voiceCatalog) ? s.voiceCatalog : []);
@@ -125,6 +141,9 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
         ownerName,
         assistantName: assistantName.trim() || "Airy",
         radarUrl,
+        radarOpenAsApp,
+        radarAppName: radarAppName.trim() || "Radar Municipal",
+        enabledPackages,
         openrouterModel: openrouterModel.trim() || "anthropic/claude-haiku-5.5",
         elevenVoiceId,
         voiceCatalog,
@@ -227,6 +246,75 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
           URL do Radar / atalho principal
           <input value={radarUrl} onChange={(e) => setRadarUrl(e.target.value)} />
         </label>
+        <fieldset className="setup-fieldset">
+          <legend>Radar — app ou browser</legend>
+          <label className="setup-check">
+            <input
+              type="checkbox"
+              checked={radarOpenAsApp}
+              onChange={(e) => setRadarOpenAsApp(e.target.checked)}
+            />
+            Preferir app/PWA instalado (senão abre a URL no navegador)
+          </label>
+          {radarOpenAsApp ? (
+            <label>
+              Nome do app local
+              <input
+                value={radarAppName}
+                onChange={(e) => setRadarAppName(e.target.value)}
+                placeholder="Radar Municipal"
+              />
+            </label>
+          ) : null}
+        </fieldset>
+
+        <fieldset className="setup-fieldset">
+          <legend>Pacotes</legend>
+          <p className="setup-hint">
+            Só o que estiver ligado pode abrir por voz. Desligado → Airy avisa.
+          </p>
+          <div className="setup-packages">
+            {PACKAGE_CATALOG.map((pkg) => {
+              const on = enabledPackages.includes(pkg.id);
+              return (
+                <label key={pkg.id} className="setup-check">
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    onChange={(e) => {
+                      const id = pkg.id as PackageId;
+                      setEnabledPackages((prev) =>
+                        e.target.checked
+                          ? prev.includes(id)
+                            ? prev
+                            : [...prev, id]
+                          : prev.filter((x) => x !== id),
+                      );
+                    }}
+                  />
+                  {pkg.label}
+                </label>
+              );
+            })}
+          </div>
+          <div className="setup-actions" style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => setEnabledPackages(ALL_PACKAGE_IDS)}
+            >
+              Ligar todos
+            </button>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => setEnabledPackages([])}
+            >
+              Desligar todos
+            </button>
+          </div>
+        </fieldset>
+
         <label>
           Modelo OpenRouter (barato + tools)
           <select

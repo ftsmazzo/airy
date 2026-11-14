@@ -9,6 +9,12 @@ import {
   type DesktopConfig,
 } from "./desktop.js";
 import {
+  defaultEnabledPackages,
+  normalizeEnabledPackages,
+  PACKAGE_CATALOG,
+  type PackageId,
+} from "./packages.js";
+import {
   fetchNewsHeadlines,
   NEWS_TOOL_DEFS,
   resolveChannelLiveUrl,
@@ -49,6 +55,11 @@ export type AiryEnv = {
   mcpToken: string;
   mcpBaseUrl: string;
   radarUrl: string;
+  /** Preferir app/PWA instalado do Radar em vez do browser */
+  radarOpenAsApp?: boolean;
+  radarAppName?: string;
+  /** Pacotes ligados nos Ajustes (ids do catálogo) */
+  enabledPackages?: PackageId[];
   personaPath?: string;
   ownerName?: string;
 };
@@ -151,6 +162,9 @@ export function loadEnvFromProcess(): AiryEnv {
     mcpBaseUrl:
       clean(e.MCP_BASE_URL) || "https://ie-dados-mcp.kxryyk.easypanel.host",
     radarUrl: clean(e.AIRY_RADAR_URL),
+    radarOpenAsApp: clean(e.AIRY_RADAR_OPEN_AS_APP) === "1",
+    radarAppName: clean(e.AIRY_RADAR_APP_NAME) || undefined,
+    enabledPackages: defaultEnabledPackages(),
     personaPath: clean(e.AIRY_PERSONA_PATH),
     ownerName: clean(e.AIRY_OWNER_NAME),
   };
@@ -171,7 +185,12 @@ export class AiryAgent {
   constructor(env: AiryEnv) {
     this.env = env;
     this.mcp = new McpHttpClient({ baseUrl: env.mcpBaseUrl, token: env.mcpToken });
-    this.desktop = { radarUrl: env.radarUrl };
+    this.desktop = {
+      radarUrl: env.radarUrl,
+      radarOpenAsApp: Boolean(env.radarOpenAsApp),
+      radarAppName: env.radarAppName,
+      enabledPackages: normalizeEnabledPackages(env.enabledPackages),
+    };
     this.reloadPersona();
   }
 
@@ -240,13 +259,13 @@ export class AiryAgent {
       case "open_radar_municipal":
         return openRadarMunicipal(this.desktop);
       case "open_youtube":
-        return openYoutube();
+        return openYoutube(this.desktop);
       case "open_spotify":
-        return openSpotify();
+        return openSpotify(this.desktop);
       case "open_url":
         return openAllowedUrl(String(args.url || ""), this.desktop);
       case "open_app":
-        return openNamedApp(String(args.name || ""));
+        return openNamedApp(String(args.name || ""), this.desktop);
       case "open_pdf":
         return openPdf(String(args.path || ""));
       case "read_news": {
@@ -475,6 +494,13 @@ export class AiryAgent {
 }
 
 export { McpHttpClient } from "./mcp.js";
+export {
+  PACKAGE_CATALOG,
+  defaultEnabledPackages,
+  normalizeEnabledPackages,
+  type PackageId,
+  type PackageDef,
+} from "./packages.js";
 export {
   openRadarMunicipal,
   openSpotify,

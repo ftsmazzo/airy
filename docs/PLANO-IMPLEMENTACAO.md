@@ -120,10 +120,10 @@ Antes do provisionador público na Fabrica-IA (`fabrica-seguranca`):
 |---|---|
 | 1.0 doctor + install/mac\|win | **Feito** (doctor aceita cofre; pastas + setup) |
 | 1.1b provisionador + redeem no app | **Deployed** — `https://airy-provisioner.kxryyk.easypanel.host` `/health` ok; seed via `BOOTSTRAP_TOKEN` + keys nas env EasyPanel |
-| 1.2 allowlist Ary | **Parcial** (hosts/apps expandidos; toggles UI ainda não) |
-| 1.3 app vs browser | **Parcial** (prompt); preferência Radar pendente |
+| 1.2 allowlist Ary | **Feito** (catálogo + `enabledPackages` + toggles em Ajustes) |
+| 1.3 app vs browser | **Feito** (Radar: preferência app/PWA vs browser + nome do app) |
 | 1.4 Start UI | **Feito mínimo** (token + nomes + keys manuais colapsáveis) |
-| 1.5 voz preview | Pendente |
+| 1.5 voz preview | **Feito** (select catálogo + Preview TTS) |
 | 1.6 notícias CNN live | **Feito mínimo** (`open_channel_live`) |
 | 1.7 MCP polish | Pendente |
 | 1.1 packaging electron-builder | **Win OK** — `release/Airy-Setup-0.1.0-x64.exe` (~105 MB); Mac DMG só em macOS; sem code signing ainda |

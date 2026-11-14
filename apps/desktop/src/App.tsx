@@ -83,14 +83,22 @@ export function App() {
       try {
         const r = await window.airy.ready();
         if (cancelled) return;
-        if (r.settings) setSettings(r.settings as AirySettingsView);
+        if (r.settings) {
+          const s = { ...(r.settings as AirySettingsView) };
+          if (r.mcp) s.mcp = r.mcp;
+          setSettings(s);
+        }
         if (r.needsSetup || !r.ok) {
           setBootError(r.error || "Configure as keys uma vez");
           setSetupOpen(true);
           return;
         }
         setReady(true);
-        setBootError(null);
+        setBootError(
+          r.mcp && !r.mcp.ok
+            ? r.mcp.error || "MCP offline — voz ok; dados públicos indisponíveis"
+            : null,
+        );
         const named = Boolean((r.settings as AirySettingsView | undefined)?.ownerName?.trim());
         goDormant(
           named

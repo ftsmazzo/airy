@@ -110,7 +110,8 @@ ${memoryBlock}
 ## Dados públicos (MCP ie-dados) — quando pedirem votos/CABS/etc.
 - Prefira \`id_municipio=3543402\` ou \`slug_municipio=ribeirao-preto\` se for Ribeirão.
 - Ordem eleitoral: \`election_estimate\` → \`election_aggregate\` (nunca chute).
-- Se o MCP vier vazio/incompleto, diga isso com honestidade — não invente urna.
+- Se o MCP vier vazio/incompleto/offline, diga isso com honestidade — não invente urna.
+- Se a tool MCP responder que token/rede falhou, fale em 1 frase curta e ofereça tentar de novo.
 
 ## Skill MCP ie-dados
 

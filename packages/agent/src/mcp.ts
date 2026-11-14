@@ -23,15 +23,45 @@ export type McpToolInfo = {
   inputSchema?: Record<string, unknown>;
 };
 
+export function friendlyMcpError(err: unknown): string {
+  const msg = (err as Error)?.message || String(err || "");
+  if (/401|403|inválido|invalid/i.test(msg)) {
+    return "MCP recusou o token. Ative de novo o token de instalação ou cole o MCP Token em Ajustes.";
+  }
+  if (/404|ENOTFOUND|ECONNREFUSED|fetch failed|rede|network|timeout|AbortError/i.test(msg)) {
+    return "MCP fora do ar ou sem rede. Tente de novo em instantes.";
+  }
+  if (/5\d\d/.test(msg)) {
+    return "MCP com falha no servidor. Dados públicos indisponíveis por agora.";
+  }
+  return `MCP indisponível: ${msg.slice(0, 160)}`;
+}
+
 export class McpHttpClient {
   private url: string;
+  private baseUrl: string;
   private sessionId: string | null = null;
   private nextId = 1;
   private toolsCache: McpToolInfo[] | null = null;
 
   constructor(cfg: McpConfig) {
     const base = cfg.baseUrl.replace(/\/$/, "");
+    this.baseUrl = base;
     this.url = `${base}/key/${cfg.token}/mcp`;
+  }
+
+  /** Ping leve em /health (sem token). */
+  async health(): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const res = await fetch(`${this.baseUrl}/health`, {
+        signal: AbortSignal.timeout(8000),
+      });
+      const text = await res.text();
+      if (res.ok && /ok/i.test(text)) return { ok: true };
+      return { ok: false, error: `health ${res.status}` };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
   }
 
   private headers(): Record<string, string> {

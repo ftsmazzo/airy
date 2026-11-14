@@ -34,6 +34,11 @@ export type AirySettingsView = {
   inboxEnabled: boolean;
   inboxPath: string;
   inboxAutoSummarizePdf: boolean;
+  mcp?: {
+    ok: boolean;
+    toolCount: number;
+    error?: string;
+  };
 };
 
 export type AiryApi = {
@@ -43,6 +48,11 @@ export type AiryApi = {
     needsSetup?: boolean;
     importedFromEnv?: boolean;
     settings?: AirySettingsView;
+    mcp?: {
+      ok: boolean;
+      toolCount: number;
+      error?: string;
+    };
   }>;
   getSettings: () => Promise<AirySettingsView>;
   saveSettings: (partial: Record<string, unknown>) => Promise<{

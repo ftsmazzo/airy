@@ -445,6 +445,13 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
           </>
         )}
 
+        {view?.mcp ? (
+          <p className="setup-msg">
+            {view.mcp.ok
+              ? `MCP ok · ${view.mcp.toolCount} tools`
+              : `MCP: ${view.mcp.error || "offline"}`}
+          </p>
+        ) : null}
         {msg ? <p className="setup-msg">{msg}</p> : null}
         {view?.path ? <p className="setup-path">{view.path}</p> : null}
 

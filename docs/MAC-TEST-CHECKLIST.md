@@ -1,23 +1,46 @@
-# Handoff — teste Mac
+# Checklist de aceite — Mac (Onda 1)
 
-## Enviar ao sócio (seguro)
+Enquanto o DMG não estiver assinado: build local (`npm run dist:mac` em macOS) ou `npm run dev` após `./scripts/setup-mac.sh`.  
+Provisionador: `https://airy-provisioner.kxryyk.easypanel.host`
 
-1. Link do repo: https://github.com/ftsmazzo/airy  
-2. Arquivo `.env` completo via **AirDrop / 1Password** (nunca no chat público)  
-3. Este guia: `INSTALL-MAC.md`
+## Instalação
 
-## Comando que ele roda
+- [ ] App abre pelo ícone / atalho (sem depender de terminal no uso diário)
+- [ ] (Dev) `./scripts/setup-mac.sh` + doctor verde
 
-```bash
-git clone https://github.com/ftsmazzo/airy.git && cd airy && chmod +x scripts/setup-mac.sh && ./scripts/setup-mac.sh
-# colar .env
-npm run doctor && npm run smoke:accept && npm run dev
-```
+## Token e Start
 
-## Aceite rápido
+- [ ] Primeiro boot pede token de instalação
+- [ ] Token válido → Ativar → orbe pronto
+- [ ] Token errado → mensagem clara
+- [ ] Sem token → recursos bloqueados
 
-- [ ] CABS falada correta  
-- [ ] Radar / YouTube / Spotify abrem  
-- [ ] Orbe muda de estado  
-- [ ] Push-to-talk (Espaço)  
+## Voz e orbe
+
+- [ ] Espaço (PTT) escuta e responde
+- [ ] Orbe muda de estado
 - [ ] 2 palmas (opcional se mic ok)
+- [ ] “Airy …” wake (se ligado)
+- [ ] Preview de voz em Ajustes
+
+## Pacotes e Radar
+
+- [ ] Sites da lista Ary abrem com pacote ligado
+- [ ] Pacote desligado → “desligado nos Pacotes”
+- [ ] Radar usa URL da config
+- [ ] Preferência app vs browser do Radar
+
+## MCP (ie-dados)
+
+- [ ] Ajustes mostra status MCP
+- [ ] CABS / votos: responde ou explica falha
+- [ ] MCP offline não trava a voz
+
+## Pasta vigiada
+
+- [ ] Pasta escolhida; arquivo novo avisa
+
+## Regressão
+
+- [ ] Config persiste no Keychain/cofre
+- [ ] `,` abre Ajustes

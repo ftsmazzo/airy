@@ -30,7 +30,7 @@ import {
   rememberFact,
 } from "./memory.js";
 import { NOTES_TOOL_DEFS, saveNote } from "./notes.js";
-import { McpHttpClient } from "./mcp.js";
+import { friendlyMcpError, McpHttpClient } from "./mcp.js";
 import {
   buildSystemPrompt,
   clipForSpeech,
@@ -181,6 +181,11 @@ export class AiryAgent {
     type: "function";
     function: { name: string; description?: string; parameters?: Record<string, unknown> };
   }> = [];
+  private mcpStatus: {
+    ok: boolean;
+    toolCount: number;
+    error?: string;
+  } = { ok: false, toolCount: 0 };
 
   constructor(env: AiryEnv) {
     this.env = env;
@@ -192,6 +197,10 @@ export class AiryAgent {
       enabledPackages: normalizeEnabledPackages(env.enabledPackages),
     };
     this.reloadPersona();
+  }
+
+  getMcpStatus() {
+    return { ...this.mcpStatus };
   }
 
   /** Recarrega persona/AIRY_PERSONA.md (ou AIRY_PERSONA_PATH). */
@@ -223,19 +232,35 @@ export class AiryAgent {
     if (!this.env.openrouterApiKey) throw new Error("OPENROUTER_API_KEY ausente");
     if (!this.env.elevenApiKey) throw new Error("ELEVENLABS_API_KEY ausente");
     if (!this.env.mcpToken) throw new Error("MCP_TOKEN ausente");
-    await this.mcp.initialize();
-    const tools = (await this.mcp.listTools()) || [];
-    this.mcpToolsOpenAI = tools.map((t) => ({
-      type: "function" as const,
-      function: {
-        name: t.name,
-        description: t.description || t.name,
-        parameters: (t.inputSchema as Record<string, unknown>) || {
-          type: "object",
-          properties: {},
+
+    // MCP soft-fail: voz/desktop seguem; dados públicos ficam off até voltar
+    try {
+      const health = await this.mcp.health();
+      if (!health.ok) {
+        throw new Error(health.error || "health falhou");
+      }
+      await this.mcp.initialize();
+      const tools = (await this.mcp.listTools()) || [];
+      this.mcpToolsOpenAI = tools.map((t) => ({
+        type: "function" as const,
+        function: {
+          name: t.name,
+          description: t.description || t.name,
+          parameters: (t.inputSchema as Record<string, unknown>) || {
+            type: "object",
+            properties: {},
+          },
         },
-      },
-    }));
+      }));
+      this.mcpStatus = { ok: true, toolCount: tools.length };
+    } catch (e) {
+      this.mcpToolsOpenAI = [];
+      this.mcpStatus = {
+        ok: false,
+        toolCount: 0,
+        error: friendlyMcpError(e),
+      };
+    }
   }
 
   private allTools() {
@@ -427,8 +452,16 @@ export class AiryAgent {
         let result: string;
         if (LOCAL_TOOL_NAMES.has(name)) {
           result = await this.runLocalTool(name, args);
+        } else if (!this.mcpStatus.ok) {
+          result =
+            this.mcpStatus.error ||
+            "MCP offline. Dados públicos indisponíveis; tente de novo depois.";
         } else {
-          result = await this.mcp.callTool(name, args);
+          try {
+            result = await this.mcp.callTool(name, args);
+          } catch (e) {
+            result = friendlyMcpError(e);
+          }
         }
         toolResults.push(result);
         this.history.push({

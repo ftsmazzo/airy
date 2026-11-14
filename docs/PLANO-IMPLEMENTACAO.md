@@ -125,8 +125,9 @@ Antes do provisionador público na Fabrica-IA (`fabrica-seguranca`):
 | 1.4 Start UI | **Feito mínimo** (token + nomes + keys manuais colapsáveis) |
 | 1.5 voz preview | **Feito** (select catálogo + Preview TTS) |
 | 1.6 notícias CNN live | **Feito mínimo** (`open_channel_live`) |
-| 1.7 MCP polish | Pendente |
-| 1.1 packaging electron-builder | **Win OK** — `release/Airy-Setup-0.1.0-x64.exe` (~105 MB); Mac DMG só em macOS; sem code signing ainda |
+| 1.7 MCP polish | **Feito** (health + soft-fail no boot; erros amigáveis; status na UI) |
+| 1.8 aceite | **Checklist** Win + Mac atualizados — falta rodada humana Ary/Fred |
+| 1.1 packaging electron-builder | **Win OK** — `release/Airy-Setup-0.1.0-x64.exe`; Mac DMG só em macOS; sem code signing ainda |
 
 ## 8. Fora deste plano (não puxar)
 

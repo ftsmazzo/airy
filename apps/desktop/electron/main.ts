@@ -294,11 +294,13 @@ app.whenReady().then(async () => {
           settings: view,
         };
       }
-      await getAgent();
+      const a = await getAgent();
+      const mcp = a.getMcpStatus();
       return {
         ok: true,
         settings: settingsPublicView(loadSettings()),
         importedFromEnv: imported,
+        mcp,
       };
     } catch (e) {
       return {
@@ -310,7 +312,17 @@ app.whenReady().then(async () => {
     }
   });
 
-  ipcMain.handle("airy:settings-get", async () => settingsPublicView(loadSettings()));
+  ipcMain.handle("airy:settings-get", async () => {
+    const view = settingsPublicView(loadSettings());
+    try {
+      if (agent) {
+        return { ...view, mcp: agent.getMcpStatus() };
+      }
+    } catch {
+      /* ignore */
+    }
+    return view;
+  });
 
   ipcMain.handle("airy:redeem-token", async (_evt, token: string) => {
     try {

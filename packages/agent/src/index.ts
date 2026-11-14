@@ -5,9 +5,11 @@ import {
   openNamedApp,
   openRadarMunicipal,
   openSpotify,
+  openSpotifyContent,
   openYoutube,
   type DesktopConfig,
 } from "./desktop.js";
+import { readSpreadsheet, SHEET_TOOL_DEFS } from "./sheets.js";
 import {
   defaultEnabledPackages,
   normalizeEnabledPackages,
@@ -100,6 +102,7 @@ const LOCAL_TOOL_NAMES = new Set([
   "research_web",
   "create_html_artifact",
   "summarize_pdf",
+  "read_spreadsheet",
   "remember_fact",
   "recall_memory",
   "forget_memory",
@@ -275,6 +278,7 @@ export class AiryAgent {
       ...PDF_TOOL_DEFS,
       ...MEMORY_TOOL_DEFS,
       ...NOTES_TOOL_DEFS,
+      ...SHEET_TOOL_DEFS,
       ...this.mcpHub.getTools(),
     ];
   }
@@ -288,14 +292,19 @@ export class AiryAgent {
         return openRadarMunicipal(this.desktop);
       case "open_youtube":
         return openYoutube(this.desktop);
-      case "open_spotify":
+      case "open_spotify": {
+        const target = String(args.target || "").trim();
+        if (target) return openSpotifyContent(target, this.desktop);
         return openSpotify(this.desktop);
+      }
       case "open_url":
         return openAllowedUrl(String(args.url || ""), this.desktop);
       case "open_app":
         return openNamedApp(String(args.name || ""), this.desktop);
       case "open_pdf":
         return openPdf(String(args.path || ""));
+      case "read_spreadsheet":
+        return readSpreadsheet(String(args.path || ""), Number(args.maxRows) || 12);
       case "read_news": {
         const news = await fetchNewsHeadlines(
           String(args.portal || "g1"),
@@ -356,7 +365,11 @@ export class AiryAgent {
         return out;
       }
       case "save_note":
-        return saveNote(String(args.title || ""), String(args.body || ""));
+        return saveNote(
+          String(args.title || ""),
+          String(args.body || ""),
+          Boolean(args.openInEditor),
+        );
       default:
         return `Tool local desconhecida: ${name}`;
     }

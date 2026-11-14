@@ -95,6 +95,16 @@ export type AiryApi = {
     settings?: AirySettingsView;
     skills?: AirySkillView[];
   }>;
+  importMcpJson: () => Promise<{
+    ok: boolean;
+    error?: string;
+    connections?: Array<{
+      id: string;
+      label: string;
+      baseUrl: string;
+      token?: string;
+    }>;
+  }>;
   textTurn: (text: string) => Promise<AiryTurn>;
   voiceTurn: (audioBase64: string, filename: string) => Promise<AiryTurn>;
   speak: (

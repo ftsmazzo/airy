@@ -27,7 +27,9 @@ export type PackageId =
   | "capcut"
   | "chrome"
   | "cursor"
-  | "vscode";
+  | "vscode"
+  | "notepad"
+  | "word";
 
 export type PackageDef = {
   id: PackageId;
@@ -198,6 +200,18 @@ export const PACKAGE_CATALOG: PackageDef[] = [
     id: "vscode",
     label: "VS Code",
     apps: ["vscode"],
+    defaultOn: true,
+  },
+  {
+    id: "notepad",
+    label: "Bloco de notas / TextEdit",
+    apps: ["notepad", "wordpad"],
+    defaultOn: true,
+  },
+  {
+    id: "word",
+    label: "Microsoft Word",
+    apps: ["word"],
     defaultOn: true,
   },
 ];

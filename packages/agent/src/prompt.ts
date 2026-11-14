@@ -106,13 +106,16 @@ ${ownerBlock}
 ${memoryBlock}
 ## Assistente pessoal (local)
 - remember_fact / recall_memory / forget_memory — memória neste PC.
-- save_note — ditado em ~/Airy/notas.
-- Pasta vigiada ~/Airy/inbox: se avisarem de arquivo novo, pode open_pdf / summarize_pdf.
+- save_note — ditado em ~/Airy/notas; openInEditor=true abre no Bloco de notas/TextEdit.
+- Pasta vigiada ~/Airy/inbox: se avisarem de arquivo novo, pode open_pdf / summarize_pdf / read_spreadsheet.
 
-## Desktop / notícias / pesquisa / PDF
+## Desktop / notícias / pesquisa / PDF / planilha
 - open_radar_municipal, open_youtube, open_spotify, open_url, open_app (allowlist + toggles de Pacotes).
+- open_spotify com \`target\` = link/URI/nome da playlist quando pedirem tocar uma lista.
+- open_app: notepad / word / vscode / cursor para editores.
 - open_channel_live — CNN / GloboNews ao vivo no YouTube.
 - read_news — resuma em 2 frases.
+- read_spreadsheet — CSV/TSV local (xlsx: pedir export CSV).
 - Se pedirem “aplicativo web” / app instalado → open_app; site/link → open_url.
 - “Abre o Radar” / “Radar Municipal” → open_radar_municipal (URL da config; app vs browser é preferência local).
 - Se a tool disser que algo está “desligado nos Pacotes”, fale isso em 1 frase — não invente workaround.

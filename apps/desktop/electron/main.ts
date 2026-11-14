@@ -407,6 +407,47 @@ app.whenReady().then(async () => {
     });
   });
 
+  ipcMain.handle("airy:import-mcp-json", async () => {
+    const res = await dialog.showOpenDialog(mainWindow!, {
+      title: "Carregar conexão MCP (JSON)",
+      properties: ["openFile"],
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    });
+    if (res.canceled || !res.filePaths[0]) return { ok: false as const };
+    try {
+      const { readFileSync } = await import("node:fs");
+      const raw = readFileSync(res.filePaths[0], "utf8");
+      const parsed = JSON.parse(raw) as unknown;
+      const items = Array.isArray(parsed) ? parsed : [parsed];
+      const out: Array<{
+        id: string;
+        label: string;
+        baseUrl: string;
+        token?: string;
+      }> = [];
+      for (const item of items) {
+        const o = item as Record<string, unknown>;
+        const id = String(o.id || o.name || "")
+          .trim()
+          .replace(/[^a-zA-Z0-9_-]/g, "")
+          .slice(0, 32);
+        const baseUrl = String(o.baseUrl || o.url || "").trim().replace(/\/$/, "");
+        const label = String(o.label || o.name || id).trim().slice(0, 80);
+        const token = String(o.token || o.mcpToken || "").trim();
+        if (id && baseUrl) out.push({ id, label: label || id, baseUrl, token: token || undefined });
+      }
+      if (!out.length) {
+        return {
+          ok: false as const,
+          error: "JSON sem id/baseUrl. Ex.: {\"id\":\"cliente\",\"baseUrl\":\"https://…\",\"token\":\"…\"}",
+        };
+      }
+      return { ok: true as const, connections: out };
+    } catch (e) {
+      return { ok: false as const, error: (e as Error).message };
+    }
+  });
+
   ipcMain.handle("airy:skills-import", async () => {
     const res = await dialog.showOpenDialog(mainWindow!, {
       title: "Importar skill (.md)",

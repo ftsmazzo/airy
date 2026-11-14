@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld("airy", {
     }>,
   listSkills: () => ipcRenderer.invoke("airy:skills-list"),
   importSkill: () => ipcRenderer.invoke("airy:skills-import"),
+  importMcpJson: () => ipcRenderer.invoke("airy:import-mcp-json"),
   textTurn: (text: string) =>
     ipcRenderer.invoke("airy:text-turn", text) as Promise<{
       userText: string;

@@ -37,6 +37,13 @@ const APP_ALLOWLIST: Record<
   edge: { mac: "Microsoft Edge", win: ["msedge"], winExe: "msedge.exe" },
   firefox: { mac: "Firefox", win: ["firefox"], winExe: "firefox.exe" },
   spotify: { mac: "Spotify", win: ["spotify"], web: SPOTIFY_WEB },
+  notepad: { mac: "TextEdit", win: ["notepad"], winExe: "notepad.exe" },
+  wordpad: { win: ["write"], winExe: "write.exe" },
+  word: {
+    mac: "Microsoft Word",
+    win: ["winword"],
+    winExe: "WINWORD.EXE",
+  },
   slack: { mac: "Slack", win: ["slack"], web: "https://app.slack.com" },
   notion: { mac: "Notion", win: ["notion"], web: "https://www.notion.so" },
   whatsapp: {
@@ -190,6 +197,57 @@ export async function openSpotify(cfg?: DesktopConfig): Promise<string> {
   return openNamedApp("spotify", cfg);
 }
 
+/**
+ * Abre playlist/álbum/faixa no Spotify via URI ou URL.
+ * Ex.: spotify:playlist:37i9dQZF1DXcBWIGoYBM5M ou link open.spotify.com/...
+ * Não controla o player via API (precisa OAuth) — abre e deixa o Spotify tocar.
+ */
+export async function openSpotifyContent(
+  target: string,
+  cfg?: DesktopConfig,
+): Promise<string> {
+  if (cfg && !isPackageEnabled(cfg.enabledPackages, "spotify")) {
+    return disabledPackageMessage("spotify");
+  }
+  const raw = (target || "").trim();
+  if (!raw) return "Diga qual playlist, álbum ou música (nome do link ou URI).";
+
+  let uri = raw;
+  // https://open.spotify.com/playlist/ID → spotify:playlist:ID
+  const web = raw.match(
+    /open\.spotify\.com\/(playlist|album|track|artist|show|episode)\/([a-zA-Z0-9]+)/i,
+  );
+  if (web) {
+    uri = `spotify:${web[1].toLowerCase()}:${web[2]}`;
+  } else if (/^spotify:[a-z]+:/i.test(raw)) {
+    uri = raw;
+  } else if (/^[a-zA-Z0-9]{22}$/.test(raw)) {
+    uri = `spotify:playlist:${raw}`;
+  } else {
+    // busca na web do Spotify
+    const q = encodeURIComponent(raw);
+    return openUrl(`https://open.spotify.com/search/${q}`);
+  }
+
+  try {
+    if (process.platform === "win32") {
+      await execFileAsync("cmd", ["/c", "start", "", uri]);
+    } else if (process.platform === "darwin") {
+      await execFileAsync("open", [uri]);
+    } else {
+      await execFileAsync("xdg-open", [uri]);
+    }
+    return `Abrindo no Spotify: ${uri}`;
+  } catch {
+    // fallback web
+    const parts = uri.split(":");
+    if (parts.length >= 3) {
+      return openUrl(`https://open.spotify.com/${parts[1]}/${parts[2]}`);
+    }
+    return openUrl(SPOTIFY_WEB);
+  }
+}
+
 export async function openAllowedUrl(url: string, cfg: DesktopConfig): Promise<string> {
   if (!allowlisted(url, cfg.radarUrl)) {
     return `URL bloqueada (fora da allowlist): ${url}`;
@@ -274,8 +332,19 @@ export const DESKTOP_TOOL_DEFS = [
     type: "function" as const,
     function: {
       name: "open_spotify",
-      description: "Abre o app Spotify (ou o site se o app não estiver instalado).",
-      parameters: { type: "object", properties: {}, additionalProperties: false },
+      description:
+        "Abre o Spotify. Se o usuário pedir uma playlist/álbum/música, passe o link, URI spotify:… ou o nome em `target`.",
+      parameters: {
+        type: "object",
+        properties: {
+          target: {
+            type: "string",
+            description:
+              "Opcional: URL open.spotify.com/…, URI spotify:playlist:…, id da playlist, ou texto para buscar",
+          },
+        },
+        additionalProperties: false,
+      },
     },
   },
   {
@@ -299,13 +368,14 @@ export const DESKTOP_TOOL_DEFS = [
     function: {
       name: "open_app",
       description:
-        "Abre um aplicativo instalado da allowlist (chrome, spotify, slack, notion, whatsapp, telegram, discord, vscode, cursor, canva, capcut, obs, safari, edge, finder/explorer, terminal, notes, mail, calendar). Use quando pedirem o app/PWA, não o site.",
+        "Abre um aplicativo instalado da allowlist (chrome, spotify, slack, notion, whatsapp, telegram, discord, vscode, cursor, canva, capcut, obs, notepad, word, safari, edge, finder/explorer, terminal, notes, mail, calendar). Use quando pedirem o app/PWA, não o site.",
       parameters: {
         type: "object",
         properties: {
           name: {
             type: "string",
-            description: "Nome do app, ex.: chrome, spotify, slack, cursor",
+            description:
+              "Nome do app, ex.: chrome, spotify, notepad, word, slack, cursor",
           },
         },
         required: ["name"],

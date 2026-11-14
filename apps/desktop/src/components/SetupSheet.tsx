@@ -3,6 +3,7 @@ import {
   PACKAGE_CATALOG,
   type PackageId,
 } from "@airy/packages-catalog";
+import { ToggleSwitch } from "./ToggleSwitch";
 import type {
   AiryMcpConnView,
   AirySettingsView,
@@ -52,6 +53,13 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
   const [previewBusy, setPreviewBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [view, setView] = useState<AirySettingsView | null>(initial || null);
+  const [mcpAddOpen, setMcpAddOpen] = useState(false);
+  const [mcpForm, setMcpForm] = useState({
+    id: "",
+    label: "",
+    baseUrl: "",
+    token: "",
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -162,6 +170,74 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
       setMsg((e as Error).message);
     } finally {
       setPreviewBusy(false);
+    }
+  };
+
+  const mcpOnline = (id: string): "online" | "offline" | "unknown" => {
+    const c = view?.mcp?.connections?.find((x) => x.id === id);
+    if (!c) return "unknown";
+    return c.ok ? "online" : "offline";
+  };
+
+  const addMcpManual = () => {
+    const id = mcpForm.id.trim().replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 32);
+    const baseUrl = mcpForm.baseUrl.trim().replace(/\/$/, "");
+    if (!id || !baseUrl) {
+      setMsg("MCP precisa de id e URL.");
+      return;
+    }
+    setMcpDrafts((prev) => {
+      const rest = prev.filter((p) => p.id !== id);
+      return [
+        ...rest,
+        {
+          id,
+          label: mcpForm.label.trim() || id,
+          baseUrl,
+          enabled: true,
+          hasToken: Boolean(mcpForm.token.trim()),
+          tokenDraft: mcpForm.token.trim(),
+        },
+      ];
+    });
+    setMcpForm({ id: "", label: "", baseUrl: "", token: "" });
+    setMcpAddOpen(false);
+    setMsg(`MCP “${id}” adicionado — Salvar para aplicar.`);
+  };
+
+  const importMcpJson = async () => {
+    if (!window.airy?.importMcpJson) {
+      setMsg("Atualize o app — import JSON indisponível.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await window.airy.importMcpJson();
+      if (!res.ok) {
+        setMsg(res.error || "Import cancelado");
+        return;
+      }
+      const list = res.connections || [];
+      setMcpDrafts((prev) => {
+        const map = new Map(prev.map((p) => [p.id, p]));
+        for (const c of list) {
+          map.set(c.id, {
+            id: c.id,
+            label: c.label || c.id,
+            baseUrl: c.baseUrl,
+            enabled: true,
+            hasToken: Boolean(c.token),
+            tokenDraft: c.token || "",
+          });
+        }
+        return [...map.values()];
+      });
+      setMcpAddOpen(false);
+      setMsg(`${list.length} conexão(ões) carregada(s) — Salvar para aplicar.`);
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -325,14 +401,12 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
         </label>
         <fieldset className="setup-fieldset">
           <legend>Radar — app ou browser</legend>
-          <label className="setup-check">
-            <input
-              type="checkbox"
-              checked={radarOpenAsApp}
-              onChange={(e) => setRadarOpenAsApp(e.target.checked)}
-            />
-            Preferir app/PWA instalado (senão abre a URL no navegador)
-          </label>
+          <ToggleSwitch
+            checked={radarOpenAsApp}
+            label="Preferir app/PWA instalado"
+            hint="Desligado = abre a URL no navegador"
+            onChange={setRadarOpenAsApp}
+          />
           {radarOpenAsApp ? (
             <label>
               Nome do app local
@@ -346,31 +420,29 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
         </fieldset>
 
         <fieldset className="setup-fieldset">
-          <legend>Pacotes</legend>
+          <legend>Aplicativos / pacotes</legend>
           <p className="setup-hint">
-            Só o que estiver ligado pode abrir por voz. Desligado → Airy avisa.
+            Chave verde = pode abrir por voz. Apagada = bloqueado.
           </p>
           <div className="setup-packages">
             {PACKAGE_CATALOG.map((pkg) => {
               const on = enabledPackages.includes(pkg.id);
               return (
-                <label key={pkg.id} className="setup-check">
-                  <input
-                    type="checkbox"
-                    checked={on}
-                    onChange={(e) => {
-                      const id = pkg.id as PackageId;
-                      setEnabledPackages((prev) =>
-                        e.target.checked
-                          ? prev.includes(id)
-                            ? prev
-                            : [...prev, id]
-                          : prev.filter((x) => x !== id),
-                      );
-                    }}
-                  />
-                  {pkg.label}
-                </label>
+                <ToggleSwitch
+                  key={pkg.id}
+                  checked={on}
+                  label={pkg.label}
+                  onChange={(next) => {
+                    const id = pkg.id as PackageId;
+                    setEnabledPackages((prev) =>
+                      next
+                        ? prev.includes(id)
+                          ? prev
+                          : [...prev, id]
+                        : prev.filter((x) => x !== id),
+                    );
+                  }}
+                />
               );
             })}
           </div>
@@ -426,10 +498,8 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
 
         <fieldset className="setup-fieldset">
           <legend>Skills</legend>
-          <p className="setup-hint">
-            Markdown de instrução. Pasta do usuário: ~/Airy/skills
-          </p>
-          <div className="setup-packages">
+          <p className="setup-hint">Markdown em ~/Airy/skills — chave liga no prompt.</p>
+          <div className="setup-toggle-list">
             {skills.length === 0 ? (
               <p className="setup-hint">Nenhuma skill ainda — importe um .md</p>
             ) : (
@@ -439,26 +509,22 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
                     ? sk.enabled
                     : enabledSkills.includes(sk.id);
                 return (
-                  <label key={sk.id} className="setup-check">
-                    <input
-                      type="checkbox"
-                      checked={on}
-                      onChange={(e) => {
-                        const allIds = skills.map((x) => x.id);
-                        const base =
-                          enabledSkills.length > 0 ? enabledSkills : allIds;
-                        setEnabledSkills(
-                          e.target.checked
-                            ? [...new Set([...base, sk.id])]
-                            : base.filter((x) => x !== sk.id),
-                        );
-                      }}
-                    />
-                    {sk.label}
-                    <span className="setup-hint" style={{ margin: 0 }}>
-                      ({sk.source})
-                    </span>
-                  </label>
+                  <ToggleSwitch
+                    key={sk.id}
+                    checked={on}
+                    label={sk.label}
+                    hint={sk.source === "user" ? "sua pasta" : "embutida"}
+                    onChange={(next) => {
+                      const allIds = skills.map((x) => x.id);
+                      const base =
+                        enabledSkills.length > 0 ? enabledSkills : allIds;
+                      setEnabledSkills(
+                        next
+                          ? [...new Set([...base, sk.id])]
+                          : base.filter((x) => x !== sk.id),
+                      );
+                    }}
+                  />
                 );
               })
             )}
@@ -478,103 +544,94 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
         <fieldset className="setup-fieldset">
           <legend>Conexões MCP</legend>
           <p className="setup-hint">
-            Tokens só no cofre local. URL https do servidor MCP do cliente/app.
+            Depois de carregar, só o nome + status. Token fica no cofre.
           </p>
-          {mcpDrafts.map((c, idx) => (
-            <div key={c.id || idx} className="setup-mcp-row">
-              <label className="setup-check">
-                <input
-                  type="checkbox"
+          {mcpDrafts.map((c, idx) => {
+            const status = mcpOnline(c.id);
+            return (
+              <div key={c.id || idx} className="mcp-card">
+                <div className="mcp-card-main">
+                  <span className={`mcp-dot ${status}`} title={status} />
+                  <span className="mcp-card-name">{c.label || c.id}</span>
+                </div>
+                <ToggleSwitch
+                  compact
                   checked={c.enabled}
-                  onChange={(e) => {
-                    const next = [...mcpDrafts];
-                    next[idx] = { ...c, enabled: e.target.checked };
-                    setMcpDrafts(next);
+                  label={c.enabled ? `${c.label} ligada` : `${c.label} desligada`}
+                  onChange={(next) => {
+                    const nextDrafts = [...mcpDrafts];
+                    nextDrafts[idx] = { ...c, enabled: next };
+                    setMcpDrafts(nextDrafts);
                   }}
                 />
-                Ativa
-              </label>
+              </div>
+            );
+          })}
+          <div className="setup-actions" style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => setMcpAddOpen((v) => !v)}
+            >
+              {mcpAddOpen ? "Fechar" : "Adicionar"}
+            </button>
+          </div>
+          {mcpAddOpen ? (
+            <div className="mcp-add-panel">
+              <p className="setup-hint">
+                Manual ou JSON proto:{" "}
+                {`{"id":"cliente","label":"Cliente","baseUrl":"https://…","token":"…"}`}
+              </p>
+              <div className="setup-actions" style={{ marginTop: 0 }}>
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={busy}
+                  onClick={() => void importMcpJson()}
+                >
+                  Carregar JSON…
+                </button>
+              </div>
               <label>
                 Id
                 <input
-                  value={c.id}
-                  onChange={(e) => {
-                    const next = [...mcpDrafts];
-                    next[idx] = { ...c, id: e.target.value };
-                    setMcpDrafts(next);
-                  }}
-                  placeholder="ie-dados"
+                  value={mcpForm.id}
+                  onChange={(e) => setMcpForm({ ...mcpForm, id: e.target.value })}
+                  placeholder="cliente-acme"
                 />
               </label>
               <label>
-                Nome
+                Nome (aparece na lista)
                 <input
-                  value={c.label}
-                  onChange={(e) => {
-                    const next = [...mcpDrafts];
-                    next[idx] = { ...c, label: e.target.value };
-                    setMcpDrafts(next);
-                  }}
+                  value={mcpForm.label}
+                  onChange={(e) => setMcpForm({ ...mcpForm, label: e.target.value })}
+                  placeholder="Cliente Acme"
                 />
               </label>
               <label>
                 URL base
                 <input
-                  value={c.baseUrl}
-                  onChange={(e) => {
-                    const next = [...mcpDrafts];
-                    next[idx] = { ...c, baseUrl: e.target.value };
-                    setMcpDrafts(next);
-                  }}
-                  placeholder="https://…"
+                  value={mcpForm.baseUrl}
+                  onChange={(e) => setMcpForm({ ...mcpForm, baseUrl: e.target.value })}
+                  placeholder="https://mcp.cliente.com"
                 />
               </label>
               <label>
-                Token {c.hasToken ? "(já salvo — cole para trocar)" : ""}
+                Token
                 <input
                   type="password"
                   autoComplete="off"
-                  value={c.tokenDraft}
-                  onChange={(e) => {
-                    const next = [...mcpDrafts];
-                    next[idx] = { ...c, tokenDraft: e.target.value };
-                    setMcpDrafts(next);
-                  }}
-                  placeholder={c.hasToken ? "••••••••" : "cole o token MCP"}
+                  value={mcpForm.token}
+                  onChange={(e) => setMcpForm({ ...mcpForm, token: e.target.value })}
                 />
               </label>
-              {mcpDrafts.length > 1 ? (
-                <button
-                  type="button"
-                  className="ghost"
-                  onClick={() => setMcpDrafts(mcpDrafts.filter((_, i) => i !== idx))}
-                >
-                  Remover
+              <div className="setup-actions">
+                <button type="button" onClick={addMcpManual}>
+                  Incluir
                 </button>
-              ) : null}
+              </div>
             </div>
-          ))}
-          <div className="setup-actions" style={{ marginTop: 8 }}>
-            <button
-              type="button"
-              className="ghost"
-              onClick={() =>
-                setMcpDrafts([
-                  ...mcpDrafts,
-                  {
-                    id: `mcp${mcpDrafts.length + 1}`,
-                    label: "Novo MCP",
-                    baseUrl: "",
-                    enabled: true,
-                    hasToken: false,
-                    tokenDraft: "",
-                  },
-                ])
-              }
-            >
-              + Conexão MCP
-            </button>
-          </div>
+          ) : null}
         </fieldset>
 
         <fieldset className="setup-fieldset">

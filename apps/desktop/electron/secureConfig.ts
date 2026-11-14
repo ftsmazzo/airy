@@ -272,6 +272,7 @@ export function settingsToAiryEnv(s: SettingsForm, fallback: AiryEnv): AiryEnv {
     enabledPackages: normalizeEnabledPackages(s.enabledPackages),
     personaPath: fallback.personaPath,
     ownerName: s.ownerName || fallback.ownerName,
+    assistantName: s.assistantName || fallback.assistantName || "Airy",
   };
 }
 

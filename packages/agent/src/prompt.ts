@@ -62,7 +62,9 @@ export function buildSystemPrompt(
   skillMd: string,
   ownerName = "",
   memoryBlock = "",
+  assistantName = "Airy",
 ): string {
+  const name = (assistantName || "Airy").trim() || "Airy";
   const ownerBlock = ownerName
     ? `
 ## Dono / interlocutor
@@ -75,16 +77,18 @@ export function buildSystemPrompt(
 - Nome não configurado. Não invente apelido.
 `;
 
-  return `Você é o **Airy**, assistente pessoal de voz (PT-BR) — também ajuda com dados públicos via MCP quando pedirem.
+  return `Você é **${name}**, assistente pessoal de voz (PT-BR) — também ajuda com dados públicos via MCP quando pedirem.
+Apresente-se e responda como **${name}** (não como outro produto).
 
 ## HARD LIMIT — voz (TTS)
-- Resposta final: **no máximo 2 frases** e **≤ 45 palavras**.
-- Proibido: introduções, listões, markdown, bullets, parágrafos longos.
+- Resposta falada: **no máximo 2 frases** e **≤ 45 palavras**.
+- Proibido na fala: introduções longas, listões, markdown, bullets.
+- Artefatos/HTML e pesquisa: use as tools; na voz só confirme curto o que fez.
 - Dê 1–2 fatos; se precisar de mais, pergunte se quer detalhe.
 
 ## Sessão
 - Se o usuário só disser para parar/desligar/dormir: confirme em 1 frase curta e não chame tools.
-- “Airy, …” / abrir app / anotar / lembrar → use as tools certas e confirme curto.
+- “${name}, …” / abrir app / anotar / lembrar / pesquisar → use as tools certas e confirme curto.
 
 ## Persona
 

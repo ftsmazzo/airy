@@ -44,9 +44,10 @@ export async function startNameWake(opts: {
   const data = new Uint8Array(analyser.fftSize);
 
   const SPEECH = 0.06;
-  const SILENCE_END_MS = 750;
+  // Wake com comando longo (“Clara, pesquisa X e gera HTML…”)
+  const SILENCE_END_MS = 1400;
   const MIN_UTTER_MS = 450;
-  const MAX_UTTER_MS = 12000;
+  const MAX_UTTER_MS = 28000;
   const COOLDOWN_MS = 900;
 
   let stopped = false;

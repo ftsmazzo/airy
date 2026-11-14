@@ -14,8 +14,14 @@ type Turn = {
 
 type Session = "dormant" | "listening" | "busy";
 
-const DORMANT_CAPTION =
-  'Dormindo · diga “Airy …” · ou Espaço / 2 palmas';
+function assistantLabel(settings?: AirySettingsView | null): string {
+  return (settings?.assistantName || "Airy").trim() || "Airy";
+}
+
+function dormantCaption(settings?: AirySettingsView | null): string {
+  const name = assistantLabel(settings);
+  return `Dormindo · diga “${name} …” · ou Espaço / 2 palmas`;
+}
 
 export function App() {
   const [orb, setOrb] = useState<OrbState>("idle");
@@ -29,7 +35,7 @@ export function App() {
   const [text, setText] = useState("");
   const [turn, setTurn] = useState<Turn | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [caption, setCaption] = useState(DORMANT_CAPTION);
+  const [caption, setCaption] = useState(() => dormantCaption(null));
 
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -65,11 +71,11 @@ export function App() {
     settingsRef.current = settings;
   }, [settings]);
 
-  const goDormant = useCallback((msg = DORMANT_CAPTION) => {
+  const goDormant = useCallback((msg?: string) => {
     setSession("dormant");
     setOrb("idle");
     setLevel(0);
-    setCaption(msg);
+    setCaption(msg ?? dormantCaption(settingsRef.current));
     clapArmedAtRef.current = performance.now() + 1800;
   }, []);
 
@@ -99,10 +105,11 @@ export function App() {
             ? r.mcp.error || "MCP offline — voz ok; dados públicos indisponíveis"
             : null,
         );
-        const named = Boolean((r.settings as AirySettingsView | undefined)?.ownerName?.trim());
+        const s = r.settings as AirySettingsView | undefined;
+        const named = Boolean(s?.ownerName?.trim());
         goDormant(
           named
-            ? DORMANT_CAPTION
+            ? dormantCaption(s)
             : "Dormindo · 2 palmas — na 1ª vez peço seu nome",
         );
       } catch (e) {
@@ -210,7 +217,9 @@ export function App() {
         return;
       }
       goDormant(
-        stopped ? "Dormindo · chame Airy quando quiser" : DORMANT_CAPTION,
+        stopped
+          ? `Dormindo · chame ${assistantLabel(settingsRef.current)} quando quiser`
+          : dormantCaption(settingsRef.current),
       );
     },
     [goDormant, playAudio],
@@ -274,7 +283,7 @@ export function App() {
     setCaption(
       needsName
         ? "Diga seu nome… Espaço envia · Esc cancela"
-        : "Ouvindo… Espaço envia · Esc cancela",
+        : "Ouvindo… fale com calma · Espaço envia · Esc cancela",
     );
 
     let stream: MediaStream;
@@ -317,7 +326,7 @@ export function App() {
       enrollModeRef.current = false;
       if (discard) {
         listenRetryRef.current = false;
-        goDormant(DORMANT_CAPTION);
+        goDormant();
         return;
       }
       try {
@@ -334,10 +343,11 @@ export function App() {
             return;
           }
           listenRetryRef.current = false;
+          const name = assistantLabel(settingsRef.current);
           goDormant(
             enrolling
-              ? "Não ouvi o nome · chame Airy de novo"
-              : "Não ouvi nada · diga “Airy …” ou Espaço",
+              ? `Não ouvi o nome · chame ${name} de novo`
+              : `Não ouvi nada · diga “${name} …” ou Espaço`,
           );
           return;
         }
@@ -361,7 +371,7 @@ export function App() {
             setCaption(res.assistantText);
             await playAudio(res.audioBase64);
             if (res.ok) {
-              goDormant(DORMANT_CAPTION);
+              goDormant();
             } else {
               goDormant("Dormindo · 2 palmas para repetir o nome");
             }
@@ -401,11 +411,11 @@ export function App() {
     analyser.fftSize = 1024;
     source.connect(analyser);
     const data = new Uint8Array(analyser.fftSize);
-    // Mais curto no instalado: AudioContext às vezes falha em detectar silêncio
-    const MIN_MS = 1200;
-    const SILENCE_MS = 1600;
-    const MAX_MS = 16000;
-    const SPEECH_THRESH = 0.03;
+    // Pausas naturais no meio do pedido NÃO devem cortar (pesquisa/artefato)
+    const MIN_MS = 1500;
+    const SILENCE_MS = 3200;
+    const MAX_MS = 45000;
+    const SPEECH_THRESH = 0.028;
     const started = performance.now();
     let heardSpeech = false;
     let silentFor = 0;
@@ -542,7 +552,10 @@ export function App() {
             if (sessionRef.current !== "dormant" || speakingRef.current) return;
             try {
               const { text } = await window.airy.transcribe(b64, filename);
-              const wake = parseWakeUtterance(text);
+              const wake = parseWakeUtterance(
+                text,
+                assistantLabel(settingsRef.current),
+              );
               if (!wake.hit) return;
               if (sessionRef.current !== "dormant") return;
 
@@ -594,7 +607,7 @@ export function App() {
         setSetupOpen(false);
         if (sessionRef.current === "listening" || speakingRef.current) {
           stopListeningRef.current({ discard: true, reason: "Parei." });
-          goDormant(DORMANT_CAPTION);
+          goDormant();
         }
         return;
       }
@@ -630,7 +643,7 @@ export function App() {
     <div className="app">
       <div className="stage" data-state={orb}>
         <div className="hud-top">
-          <h1>AIRY</h1>
+          <h1>{assistantLabel(settings).toUpperCase()}</h1>
           <div className="status">
             <span className="dot" />
             {!ready && !bootError && "boot"}
@@ -649,7 +662,8 @@ export function App() {
         </div>
 
         <div className="hint-bar">
-          Espaço ouve / Espaço envia · “airy …” · esc cancela · , ajustes
+          Espaço ouve / Espaço envia · “{assistantLabel(settings).toLowerCase()} …” · esc
+          cancela · , ajustes
         </div>
       </div>
 
@@ -663,10 +677,11 @@ export function App() {
         onClose={() => setSetupOpen(false)}
         onSaved={(s) => {
           setSettings(s);
+          settingsRef.current = s;
           setReady(s.configured);
           setBootError(null);
           setSetupOpen(false);
-          goDormant(DORMANT_CAPTION);
+          goDormant(dormantCaption(s));
         }}
       />
 

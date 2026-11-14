@@ -62,6 +62,8 @@ export type AiryEnv = {
   enabledPackages?: PackageId[];
   personaPath?: string;
   ownerName?: string;
+  /** Nome pelo qual a IA se apresenta (Ajustes) */
+  assistantName?: string;
 };
 
 const LOCAL_TOOL_NAMES = new Set([
@@ -167,6 +169,7 @@ export function loadEnvFromProcess(): AiryEnv {
     enabledPackages: defaultEnabledPackages(),
     personaPath: clean(e.AIRY_PERSONA_PATH),
     ownerName: clean(e.AIRY_OWNER_NAME),
+    assistantName: clean(e.AIRY_ASSISTANT_NAME) || "Airy",
   };
 }
 
@@ -212,6 +215,7 @@ export class AiryAgent {
       loadIeDadosSkill(),
       this.env.ownerName || "",
       memoryPromptBlock(12),
+      this.env.assistantName || "Airy",
     );
     if (this.history[0]?.role === "system") {
       this.history[0] = { role: "system", content: this.systemPrompt };

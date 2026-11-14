@@ -46,6 +46,8 @@ export type AirySettingsView = {
   elevenSpeed: number;
   mcpBaseUrl: string;
   mcpConnections: AiryMcpConnView[];
+  spotifyClientId: string;
+  hasSpotifyConnected: boolean;
   hasOpenrouterApiKey: boolean;
   hasElevenApiKey: boolean;
   hasMcpToken: boolean;
@@ -104,6 +106,15 @@ export type AiryApi = {
       baseUrl: string;
       token?: string;
     }>;
+  }>;
+  spotifyConnect: (clientId?: string) => Promise<{
+    ok: boolean;
+    error?: string;
+    settings?: AirySettingsView;
+  }>;
+  spotifyDisconnect: () => Promise<{
+    ok: boolean;
+    settings?: AirySettingsView;
   }>;
   textTurn: (text: string) => Promise<AiryTurn>;
   voiceTurn: (audioBase64: string, filename: string) => Promise<AiryTurn>;

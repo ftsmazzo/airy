@@ -17,6 +17,7 @@ import {
   type McpConnectionPublic,
   type McpConnectionSecret,
   type PackageId,
+  type SpotifyTokens,
 } from "@airy/agent";
 
 export type VoiceOption = { id: string; label: string };
@@ -44,6 +45,8 @@ export type PublicSettings = {
   mcpBaseUrl: string;
   /** Conexões MCP (sem tokens) */
   mcpConnections: McpConnectionPublic[];
+  /** Client ID público do app Spotify (developer.spotify.com) */
+  spotifyClientId: string;
   inboxEnabled: boolean;
   inboxPath: string;
   inboxAutoSummarizePdf: boolean;
@@ -56,6 +59,8 @@ export type SecretSettings = {
   licenseToken: string;
   /** JSON [{id,token}] cifrado */
   mcpConnectionTokensJson: string;
+  /** Tokens OAuth Spotify cifrados (JSON) */
+  spotifyTokensJson: string;
 };
 
 export type SettingsForm = PublicSettings & SecretSettings;
@@ -72,6 +77,7 @@ const SECRET_KEYS: (keyof SecretSettings)[] = [
   "mcpToken",
   "licenseToken",
   "mcpConnectionTokensJson",
+  "spotifyTokensJson",
 ];
 
 const DEFAULT_PUBLIC: PublicSettings = {
@@ -93,6 +99,7 @@ const DEFAULT_PUBLIC: PublicSettings = {
   elevenSpeed: 1,
   mcpBaseUrl: "https://ie-dados-mcp.kxryyk.easypanel.host",
   mcpConnections: [],
+  spotifyClientId: "",
   inboxEnabled: true,
   inboxPath: "",
   inboxAutoSummarizePdf: false,
@@ -214,6 +221,7 @@ export function loadSettings(): SettingsForm {
     mcpToken: "",
     licenseToken: "",
     mcpConnectionTokensJson: "",
+    spotifyTokensJson: "",
   };
   for (const k of SECRET_KEYS) {
     secrets[k] = decrypt(disk?.secrets?.[k] || "");
@@ -270,6 +278,7 @@ export function saveSettings(partial: Partial<SettingsForm>): SettingsForm {
     elevenSpeed: next.elevenSpeed,
     mcpBaseUrl: next.mcpBaseUrl,
     mcpConnections: normalizeMcpPublic(next.mcpConnections),
+    spotifyClientId: String(next.spotifyClientId || "").trim(),
     inboxEnabled: Boolean(next.inboxEnabled),
     inboxPath: next.inboxPath || "",
     inboxAutoSummarizePdf: Boolean(next.inboxAutoSummarizePdf),
@@ -350,7 +359,35 @@ export function settingsToAiryEnv(s: SettingsForm, fallback: AiryEnv): AiryEnv {
     personaPath: fallback.personaPath,
     ownerName: s.ownerName || fallback.ownerName,
     assistantName: s.assistantName || fallback.assistantName || "Airy",
+    spotifyClientId: s.spotifyClientId || fallback.spotifyClientId,
+    spotifyTokens: parseSpotifyTokens(s.spotifyTokensJson),
   };
+}
+
+function parseSpotifyTokens(raw: string): SpotifyTokens | null {
+  if (!raw?.trim()) return null;
+  try {
+    const t = JSON.parse(raw) as SpotifyTokens;
+    if (!t?.accessToken || !t?.refreshToken || !t?.clientId) return null;
+    return {
+      accessToken: String(t.accessToken),
+      refreshToken: String(t.refreshToken),
+      expiresAt: Number(t.expiresAt) || 0,
+      clientId: String(t.clientId),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function saveSpotifyTokens(tokens: SpotifyTokens | null): SettingsForm {
+  if (!tokens) {
+    return saveSettings({ spotifyTokensJson: "" });
+  }
+  return saveSettings({
+    spotifyClientId: tokens.clientId,
+    spotifyTokensJson: JSON.stringify(tokens),
+  });
 }
 
 function hasAnyMcp(s: SettingsForm): boolean {
@@ -389,6 +426,7 @@ export function clearLicensedSecrets(): SettingsForm {
     mcpToken: "",
     licenseToken: "",
     mcpConnectionTokensJson: "",
+    spotifyTokensJson: "",
   });
 }
 
@@ -428,6 +466,8 @@ export function settingsPublicView(s: SettingsForm) {
     elevenSpeed: s.elevenSpeed,
     mcpBaseUrl: s.mcpBaseUrl,
     mcpConnections,
+    spotifyClientId: s.spotifyClientId || "",
+    hasSpotifyConnected: Boolean(parseSpotifyTokens(s.spotifyTokensJson)),
     hasOpenrouterApiKey: Boolean(s.openrouterApiKey),
     hasElevenApiKey: Boolean(s.elevenApiKey),
     hasMcpToken: hasAnyMcp(s),

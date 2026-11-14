@@ -29,10 +29,12 @@ import {
   loadSettings,
   mergeMcpConnectionTokens,
   saveSettings,
+  saveSpotifyTokens,
   settingsPublicView,
   settingsToAiryEnv,
   type SettingsForm,
 } from "./secureConfig.js";
+import { runSpotifyOAuth } from "./spotifyOAuth.js";
 import {
   defaultInboxPath,
   ensureInboxDir,
@@ -74,7 +76,11 @@ let bootEnv: AiryEnv = loadEnvFromProcess();
 
 function resolveEnv(): AiryEnv {
   const settings = loadSettings();
-  return settingsToAiryEnv(settings, bootEnv);
+  const env = settingsToAiryEnv(settings, bootEnv);
+  env.onSpotifyTokens = (t) => {
+    saveSpotifyTokens(t);
+  };
+  return env;
 }
 
 function applyInboxWatch(): void {
@@ -396,6 +402,42 @@ app.whenReady().then(async () => {
         settings: settingsPublicView(loadSettings()),
       };
     }
+  });
+
+  ipcMain.handle("airy:spotify-connect", async (_evt, clientId?: string) => {
+    try {
+      const cur = loadSettings();
+      const id =
+        String(clientId || "").trim() ||
+        cur.spotifyClientId ||
+        (process.env.AIRY_SPOTIFY_CLIENT_ID || "").trim();
+      if (id && id !== cur.spotifyClientId) {
+        saveSettings({ spotifyClientId: id });
+      }
+      const result = await runSpotifyOAuth(id);
+      if (!result.ok) return { ok: false, error: result.error };
+      saveSpotifyTokens(result.tokens);
+      resetAgent();
+      try {
+        await getAgent();
+      } catch {
+        /* ok */
+      }
+      return { ok: true, settings: settingsPublicView(loadSettings()) };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+  });
+
+  ipcMain.handle("airy:spotify-disconnect", async () => {
+    saveSpotifyTokens(null);
+    resetAgent();
+    try {
+      await getAgent();
+    } catch {
+      /* ok */
+    }
+    return { ok: true, settings: settingsPublicView(loadSettings()) };
   });
 
   ipcMain.handle("airy:skills-list", async () => {

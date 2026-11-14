@@ -60,6 +60,8 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
     baseUrl: "",
     token: "",
   });
+  const [spotifyClientId, setSpotifyClientId] = useState("");
+  const [spotifyConnected, setSpotifyConnected] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -112,6 +114,8 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
         "";
       setInboxPath(fallback);
       setInboxAutoSummarizePdf(Boolean(s.inboxAutoSummarizePdf));
+      setSpotifyClientId(s.spotifyClientId || "");
+      setSpotifyConnected(Boolean(s.hasSpotifyConnected));
       setShowManualKeys(!s.configured);
       setMsg(
         s.encryption
@@ -241,6 +245,51 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
     }
   };
 
+  const connectSpotify = async () => {
+    if (!window.airy?.spotifyConnect) {
+      setMsg("Atualize o app — OAuth Spotify indisponível.");
+      return;
+    }
+    setBusy(true);
+    setMsg("Abrindo login Spotify no navegador…");
+    try {
+      const res = await window.airy.spotifyConnect(spotifyClientId.trim() || undefined);
+      if (!res.ok) {
+        setMsg(res.error || "Falha no OAuth Spotify");
+        return;
+      }
+      if (res.settings) {
+        setView(res.settings);
+        setSpotifyConnected(Boolean(res.settings.hasSpotifyConnected));
+        setSpotifyClientId(res.settings.spotifyClientId || spotifyClientId);
+        onSaved(res.settings);
+      }
+      setMsg("Spotify conectado. Peça “toca a playlist X”.");
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disconnectSpotify = async () => {
+    if (!window.airy?.spotifyDisconnect) return;
+    setBusy(true);
+    try {
+      const res = await window.airy.spotifyDisconnect();
+      if (res.settings) {
+        setView(res.settings);
+        setSpotifyConnected(false);
+        onSaved(res.settings);
+      }
+      setMsg("Spotify desconectado.");
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const importSkill = async () => {
     if (!window.airy?.importSkill) {
       setMsg("Atualize o app — import de skill indisponível.");
@@ -300,6 +349,7 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
         voiceCatalog,
         mcpConnections,
         mcpTokenUpdates,
+        spotifyClientId: spotifyClientId.trim(),
         inboxEnabled,
         inboxPath: inboxPath.trim(),
         inboxAutoSummarizePdf,
@@ -417,6 +467,58 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
               />
             </label>
           ) : null}
+        </fieldset>
+
+        <fieldset className="setup-fieldset">
+          <legend>Spotify</legend>
+          <p className="setup-hint">
+            Sem OAuth: abre o app e busca com{" "}
+            <code>spotify:search:…</code>. Com OAuth (Premium): toca playlist por
+            nome.
+          </p>
+          <div className="mcp-card">
+            <div className="mcp-card-main">
+              <span
+                className={`mcp-dot ${spotifyConnected ? "online" : "offline"}`}
+              />
+              <span className="mcp-card-name">
+                {spotifyConnected ? "Conta conectada" : "Não conectado"}
+              </span>
+            </div>
+          </div>
+          <label>
+            Client ID (developer.spotify.com)
+            <input
+              value={spotifyClientId}
+              onChange={(e) => setSpotifyClientId(e.target.value)}
+              placeholder="cole o Client ID do app Spotify"
+              disabled={busy}
+            />
+          </label>
+          <p className="setup-hint">
+            Redirect URI obrigatória no app Spotify:{" "}
+            <code>http://127.0.0.1:4389/callback</code>
+          </p>
+          <div className="setup-actions">
+            {spotifyConnected ? (
+              <button
+                type="button"
+                className="ghost"
+                disabled={busy}
+                onClick={() => void disconnectSpotify()}
+              >
+                Desconectar
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={busy || !spotifyClientId.trim()}
+                onClick={() => void connectSpotify()}
+              >
+                {busy ? "Aguardando login…" : "Conectar Spotify"}
+              </button>
+            )}
+          </div>
         </fieldset>
 
         <fieldset className="setup-fieldset">

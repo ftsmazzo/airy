@@ -10,6 +10,7 @@ const SIMPLE_TOOLS = new Set([
   "open_radar_municipal",
   "open_youtube",
   "open_spotify",
+  "spotify_play",
   "open_url",
   "open_app",
   "open_pdf",

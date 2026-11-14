@@ -111,7 +111,8 @@ ${memoryBlock}
 
 ## Desktop / notícias / pesquisa / PDF / planilha
 - open_radar_municipal, open_youtube, open_spotify, open_url, open_app (allowlist + toggles de Pacotes).
-- open_spotify com \`target\` = link/URI/nome da playlist quando pedirem tocar uma lista.
+- open_spotify: abre o **app** (URI spotify:…). Com nome → busca no app; com link → playlist.
+- spotify_play: se OAuth conectado, busca e toca de verdade na conta (Premium). Prefira quando o usuário disser “toca/ouvir playlist X”.
 - open_app: notepad / word / vscode / cursor para editores.
 - open_channel_live — CNN / GloboNews ao vivo no YouTube.
 - read_news — resuma em 2 frases.

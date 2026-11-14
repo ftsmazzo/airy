@@ -194,13 +194,57 @@ export async function openYoutube(cfg?: DesktopConfig): Promise<string> {
 }
 
 export async function openSpotify(cfg?: DesktopConfig): Promise<string> {
-  return openNamedApp("spotify", cfg);
+  if (cfg && !isPackageEnabled(cfg.enabledPackages, "spotify")) {
+    return disabledPackageMessage("spotify");
+  }
+  // Preferir protocolo do app (evita cair no site deslogado)
+  const viaUri = await openSpotifyUri("spotify:");
+  if (/Abrindo no app/i.test(viaUri)) return "App Spotify aberto.";
+  // fallback: tentar exe local sem web
+  const key = "spotify";
+  const spec = APP_ALLOWLIST[key];
+  if (process.platform === "win32" && spec?.win?.length) {
+    for (const cmd of spec.win) {
+      try {
+        await execFileAsync("cmd", ["/c", "start", "", cmd]);
+        return "App Spotify aberto.";
+      } catch {
+        /* next */
+      }
+    }
+  }
+  if (process.platform === "darwin" && spec?.mac) {
+    try {
+      await execFileAsync("open", ["-a", spec.mac]);
+      return "App Spotify aberto.";
+    } catch {
+      /* fall */
+    }
+  }
+  return viaUri;
+}
+
+/** Abre URI spotify:… no app instalado (nunca browser deslogado). */
+async function openSpotifyUri(uri: string): Promise<string> {
+  try {
+    if (process.platform === "win32") {
+      // protocolo registrado pelo Spotify Desktop — não usar https://
+      await execFileAsync("cmd", ["/c", "start", "", uri]);
+    } else if (process.platform === "darwin") {
+      await execFileAsync("open", ["-a", "Spotify", uri]);
+    } else {
+      await execFileAsync("xdg-open", [uri]);
+    }
+    return `Abrindo no app Spotify: ${uri}`;
+  } catch (e) {
+    return `Não abri o app Spotify (${(e as Error).message}). Confira se o Spotify Desktop está instalado.`;
+  }
 }
 
 /**
- * Abre playlist/álbum/faixa no Spotify via URI ou URL.
- * Ex.: spotify:playlist:37i9dQZF1DXcBWIGoYBM5M ou link open.spotify.com/...
- * Não controla o player via API (precisa OAuth) — abre e deixa o Spotify tocar.
+ * Abre playlist/álbum/faixa/busca no **app** Spotify via protocolo spotify:.
+ * Busca por nome → spotify:search:… (fica no app logado, não no site).
+ * Playback via API exige OAuth (Ajustes → Conectar Spotify).
  */
 export async function openSpotifyContent(
   target: string,
@@ -210,42 +254,26 @@ export async function openSpotifyContent(
     return disabledPackageMessage("spotify");
   }
   const raw = (target || "").trim();
-  if (!raw) return "Diga qual playlist, álbum ou música (nome do link ou URI).";
+  if (!raw) {
+    return openNamedApp("spotify", cfg);
+  }
 
   let uri = raw;
-  // https://open.spotify.com/playlist/ID → spotify:playlist:ID
   const web = raw.match(
     /open\.spotify\.com\/(playlist|album|track|artist|show|episode)\/([a-zA-Z0-9]+)/i,
   );
   if (web) {
     uri = `spotify:${web[1].toLowerCase()}:${web[2]}`;
-  } else if (/^spotify:[a-z]+:/i.test(raw)) {
+  } else if (/^spotify:/i.test(raw)) {
     uri = raw;
   } else if (/^[a-zA-Z0-9]{22}$/.test(raw)) {
     uri = `spotify:playlist:${raw}`;
   } else {
-    // busca na web do Spotify
-    const q = encodeURIComponent(raw);
-    return openUrl(`https://open.spotify.com/search/${q}`);
+    // busca DENTRO do app (usuário logado) — não abrir open.spotify.com no browser
+    uri = `spotify:search:${encodeURIComponent(raw)}`;
   }
 
-  try {
-    if (process.platform === "win32") {
-      await execFileAsync("cmd", ["/c", "start", "", uri]);
-    } else if (process.platform === "darwin") {
-      await execFileAsync("open", [uri]);
-    } else {
-      await execFileAsync("xdg-open", [uri]);
-    }
-    return `Abrindo no Spotify: ${uri}`;
-  } catch {
-    // fallback web
-    const parts = uri.split(":");
-    if (parts.length >= 3) {
-      return openUrl(`https://open.spotify.com/${parts[1]}/${parts[2]}`);
-    }
-    return openUrl(SPOTIFY_WEB);
-  }
+  return openSpotifyUri(uri);
 }
 
 export async function openAllowedUrl(url: string, cfg: DesktopConfig): Promise<string> {

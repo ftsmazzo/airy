@@ -56,6 +56,10 @@ import {
   needsSynthesis,
   synthesisUserNudge,
 } from "./orchestrator.js";
+import {
+  spotifySearchPlay,
+  type SpotifyTokens,
+} from "./spotify.js";
 import { friendlyApiError, sanitizeSecret } from "./keys.js";
 import { isStopIntent, stopAck } from "./session.js";
 
@@ -88,12 +92,16 @@ export type AiryEnv = {
   personaPath?: string;
   ownerName?: string;
   assistantName?: string;
+  spotifyClientId?: string;
+  spotifyTokens?: SpotifyTokens | null;
+  onSpotifyTokens?: (t: SpotifyTokens) => void;
 };
 
 const LOCAL_TOOL_NAMES = new Set([
   "open_radar_municipal",
   "open_youtube",
   "open_spotify",
+  "spotify_play",
   "open_url",
   "open_app",
   "open_pdf",
@@ -109,6 +117,28 @@ const LOCAL_TOOL_NAMES = new Set([
   "save_note",
 ]);
 
+const SPOTIFY_TOOL_DEFS = [
+  {
+    type: "function" as const,
+    function: {
+      name: "spotify_play",
+      description:
+        "Busca e toca playlist/álbum/música na conta Spotify conectada (OAuth). Prefira esta tool quando o usuário pedir para tocar/ouvir algo e o Spotify estiver conectado. Se não conectado, use open_spotify com target.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Nome da playlist, álbum ou música",
+          },
+        },
+        required: ["query"],
+        additionalProperties: false,
+      },
+    },
+  },
+];
+
 function numEnv(value: string | undefined, fallback: number): number {
   if (value == null || value === "") return fallback;
   const n = Number(value);
@@ -118,6 +148,7 @@ function numEnv(value: string | undefined, fallback: number): number {
 function confirmFromTools(trace: string[], results: string[]): string {
   if (trace.includes("open_radar_municipal")) return "Radar aberto.";
   if (trace.includes("open_youtube")) return "YouTube aberto.";
+  if (trace.includes("spotify_play")) return "Tocando no Spotify.";
   if (trace.includes("open_spotify")) return "Spotify aberto.";
   if (trace.includes("open_app")) return "App aberto.";
   if (trace.includes("open_url")) return "Pronto, abri aqui.";
@@ -279,6 +310,7 @@ export class AiryAgent {
       ...MEMORY_TOOL_DEFS,
       ...NOTES_TOOL_DEFS,
       ...SHEET_TOOL_DEFS,
+      ...(this.env.spotifyTokens ? SPOTIFY_TOOL_DEFS : []),
       ...this.mcpHub.getTools(),
     ];
   }
@@ -297,6 +329,17 @@ export class AiryAgent {
         if (target) return openSpotifyContent(target, this.desktop);
         return openSpotify(this.desktop);
       }
+      case "spotify_play":
+        return spotifySearchPlay(
+          {
+            tokens: this.env.spotifyTokens || null,
+            onTokens: (t) => {
+              this.env.spotifyTokens = t;
+              this.env.onSpotifyTokens?.(t);
+            },
+          },
+          String(args.query || ""),
+        );
       case "open_url":
         return openAllowedUrl(String(args.url || ""), this.desktop);
       case "open_app":
@@ -587,6 +630,14 @@ export {
   needsSynthesis,
   isSimpleOpenTrace,
 } from "./orchestrator.js";
+export {
+  SPOTIFY_REDIRECT_URI,
+  SPOTIFY_SCOPES,
+  buildSpotifyAuthUrl,
+  exchangeSpotifyCode,
+  spotifySearchPlay,
+  type SpotifyTokens,
+} from "./spotify.js";
 export {
   openRadarMunicipal,
   openSpotify,

@@ -338,22 +338,26 @@ app.whenReady().then(async () => {
     },
   );
 
-  ipcMain.handle("airy:speak", async (_evt, text: string) => {
-    const env = resolveEnv();
-    if (!env.elevenApiKey || !env.elevenVoiceId) {
-      throw new Error("ElevenLabs não configurado");
-    }
-    const audioMp3 = await synthesizeSpeech(String(text || "").slice(0, 400), {
-      apiKey: env.elevenApiKey,
-      voiceId: env.elevenVoiceId,
-      modelId: env.elevenTtsModel,
-      stability: env.elevenStability,
-      similarity: env.elevenSimilarity,
-      style: env.elevenStyle,
-      speed: env.elevenSpeed,
-    });
-    return { audioBase64: audioMp3.toString("base64") };
-  });
+  ipcMain.handle(
+    "airy:speak",
+    async (_evt, text: string, opts?: { voiceId?: string }) => {
+      const env = resolveEnv();
+      const voiceId = (opts?.voiceId || env.elevenVoiceId || "").trim();
+      if (!env.elevenApiKey || !voiceId) {
+        throw new Error("ElevenLabs não configurado");
+      }
+      const audioMp3 = await synthesizeSpeech(String(text || "").slice(0, 400), {
+        apiKey: env.elevenApiKey,
+        voiceId,
+        modelId: env.elevenTtsModel,
+        stability: env.elevenStability,
+        similarity: env.elevenSimilarity,
+        style: env.elevenStyle,
+        speed: env.elevenSpeed,
+      });
+      return { audioBase64: audioMp3.toString("base64") };
+    },
+  );
 
   /** STT só — wake por “Airy …” sem rodar o agente. */
   ipcMain.handle(

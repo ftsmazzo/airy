@@ -16,7 +16,11 @@ Sem painel admin. Deploy na VPS Fabrica-IA (EasyPanel) + Postgres dedicado.
 - `PORT` — default 8080
 - `RATE_MAX_PER_MIN` — default 20
 - `BOOTSTRAP_TOKEN` — (ops) token em claro entregue ao usuário; upsert no boot
-- `OPENROUTER_API_KEY` / `ELEVENLABS_API_KEY` / `MCP_TOKEN` / `ELEVENLABS_VOICE_ID` — payload do bootstrap
+- `OPENROUTER_API_KEY` / `ELEVENLABS_API_KEY` / `MCP_TOKEN` — secrets do payload
+- `ELEVENLABS_VOICE_ID` — voz default
+- `ELEVENLABS_VOICES` — JSON do catálogo (recomendado):
+  `[{"id":"VOICE_ID_1","label":"Clara"},{"id":"VOICE_ID_2","label":"Pedro"}]`
+- ou `ELEVENLABS_VOICE_IDS=id1,id2,id3` (labels curtos automáticos)
 - `BOOTSTRAP_MAX_USES` / `BOOTSTRAP_EXPIRES_DAYS` / `BOOTSTRAP_LABEL` — opcionais
 
 ## Produção (Fabrica-IA)

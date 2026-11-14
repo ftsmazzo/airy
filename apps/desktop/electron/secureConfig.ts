@@ -10,6 +10,8 @@ import { dirname, join } from "node:path";
 import { sanitizeSecret } from "@airy/agent";
 import type { AiryEnv } from "@airy/agent";
 
+export type VoiceOption = { id: string; label: string };
+
 export type PublicSettings = {
   ownerName: string;
   /** Nome pelo qual a IA se apresenta */
@@ -17,6 +19,8 @@ export type PublicSettings = {
   radarUrl: string;
   openrouterModel: string;
   elevenVoiceId: string;
+  /** Catálogo para select no Ajustes (vem do provisionador) */
+  voiceCatalog: VoiceOption[];
   elevenTtsModel: string;
   elevenStability: number;
   elevenSimilarity: number;
@@ -55,6 +59,7 @@ const DEFAULT_PUBLIC: PublicSettings = {
   radarUrl: "",
   openrouterModel: "anthropic/claude-haiku-5.5",
   elevenVoiceId: "",
+  voiceCatalog: [],
   elevenTtsModel: "eleven_v4",
   elevenStability: 0.35,
   elevenSimilarity: 0.75,
@@ -164,6 +169,14 @@ export function saveSettings(partial: Partial<SettingsForm>): SettingsForm {
     radarUrl: next.radarUrl,
     openrouterModel: next.openrouterModel,
     elevenVoiceId: next.elevenVoiceId,
+    voiceCatalog: Array.isArray(next.voiceCatalog)
+      ? next.voiceCatalog
+          .map((v) => ({
+            id: String(v?.id || "").trim(),
+            label: String(v?.label || v?.id || "").trim(),
+          }))
+          .filter((v) => v.id)
+      : current.voiceCatalog || [],
     elevenTtsModel: next.elevenTtsModel,
     elevenStability: next.elevenStability,
     elevenSimilarity: next.elevenSimilarity,
@@ -254,6 +267,7 @@ export function settingsPublicView(s: SettingsForm) {
     radarUrl: s.radarUrl,
     openrouterModel: s.openrouterModel,
     elevenVoiceId: s.elevenVoiceId,
+    voiceCatalog: Array.isArray(s.voiceCatalog) ? s.voiceCatalog : [],
     elevenTtsModel: s.elevenTtsModel,
     elevenStability: s.elevenStability,
     elevenSimilarity: s.elevenSimilarity,

@@ -35,11 +35,52 @@ CREATE TABLE IF NOT EXISTS install_tokens (
   );
 }
 
+/**
+ * Catálogo de vozes:
+ * - ELEVENLABS_VOICES='[{"id":"abc","label":"Clara"},{"id":"def","label":"Pedro"}]'
+ * - ou ELEVENLABS_VOICE_IDS=id1,id2,id3 (labels = id curto)
+ * - ELEVENLABS_VOICE_ID continua sendo o default
+ */
+function parseVoiceCatalog() {
+  const rawJson = (process.env.ELEVENLABS_VOICES || "").trim();
+  if (rawJson) {
+    try {
+      const arr = JSON.parse(rawJson);
+      if (Array.isArray(arr)) {
+        return arr
+          .map((v) => ({
+            id: String(v?.id || "").trim(),
+            label: String(v?.label || v?.id || "").trim(),
+          }))
+          .filter((v) => v.id);
+      }
+    } catch (e) {
+      console.error("ELEVENLABS_VOICES JSON inválido", e?.message || e);
+    }
+  }
+  const csv = (process.env.ELEVENLABS_VOICE_IDS || "").trim();
+  if (csv) {
+    return csv
+      .split(/[,;\s]+/)
+      .map((id) => id.trim())
+      .filter(Boolean)
+      .map((id) => ({ id, label: id.slice(0, 8) }));
+  }
+  const single = (process.env.ELEVENLABS_VOICE_ID || "").trim();
+  if (single) return [{ id: single, label: "Padrão" }];
+  return [];
+}
+
 /** Se BOOTSTRAP_TOKEN + keys estiverem nas env, upserta um token (ops sem painel). */
 async function bootstrapFromEnv() {
   if (!pool) return;
   const token = (process.env.BOOTSTRAP_TOKEN || "").trim();
   if (token.length < 8) return;
+  const voiceCatalog = parseVoiceCatalog();
+  const defaultVoice =
+    (process.env.ELEVENLABS_VOICE_ID || "").trim() ||
+    voiceCatalog[0]?.id ||
+    "";
   const payload = {
     version: 1,
     secrets: {
@@ -48,7 +89,8 @@ async function bootstrapFromEnv() {
       mcpToken: process.env.MCP_TOKEN || "",
     },
     public: {
-      elevenVoiceId: process.env.ELEVENLABS_VOICE_ID || "",
+      elevenVoiceId: defaultVoice,
+      voiceCatalog,
       openrouterModel:
         process.env.OPENROUTER_MODEL || "anthropic/claude-haiku-5.5",
       mcpBaseUrl:

@@ -17,6 +17,7 @@ export type AirySettingsView = {
   radarUrl: string;
   openrouterModel: string;
   elevenVoiceId: string;
+  voiceCatalog: Array<{ id: string; label: string }>;
   elevenTtsModel: string;
   elevenStability: number;
   elevenSimilarity: number;
@@ -52,7 +53,10 @@ export type AiryApi = {
   }>;
   textTurn: (text: string) => Promise<AiryTurn>;
   voiceTurn: (audioBase64: string, filename: string) => Promise<AiryTurn>;
-  speak: (text: string) => Promise<{ audioBase64: string }>;
+  speak: (
+    text: string,
+    opts?: { voiceId?: string },
+  ) => Promise<{ audioBase64: string }>;
   transcribe: (
     audioBase64: string,
     filename: string,

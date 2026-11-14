@@ -35,6 +35,17 @@ if (process.env.AIRY_SEED_PAYLOAD) {
     },
     public: {
       elevenVoiceId: process.env.ELEVENLABS_VOICE_ID || "",
+      voiceCatalog: (() => {
+        try {
+          if (process.env.ELEVENLABS_VOICES) {
+            return JSON.parse(process.env.ELEVENLABS_VOICES);
+          }
+        } catch {
+          /* ignore */
+        }
+        const id = process.env.ELEVENLABS_VOICE_ID || "";
+        return id ? [{ id, label: "Padrão" }] : [];
+      })(),
       openrouterModel:
         process.env.OPENROUTER_MODEL || "anthropic/claude-haiku-5.5",
       mcpBaseUrl:

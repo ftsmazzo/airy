@@ -17,6 +17,9 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
     "anthropic/claude-haiku-5.5",
   );
   const [elevenVoiceId, setElevenVoiceId] = useState("");
+  const [voiceCatalog, setVoiceCatalog] = useState<
+    Array<{ id: string; label: string }>
+  >([]);
   const [openrouterApiKey, setOpenrouterApiKey] = useState("");
   const [elevenApiKey, setElevenApiKey] = useState("");
   const [mcpToken, setMcpToken] = useState("");
@@ -25,6 +28,7 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
   const [inboxAutoSummarizePdf, setInboxAutoSummarizePdf] = useState(false);
   const [showManualKeys, setShowManualKeys] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [previewBusy, setPreviewBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [view, setView] = useState<AirySettingsView | null>(initial || null);
 
@@ -39,6 +43,7 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
       setRadarUrl(s.radarUrl || "");
       setOpenrouterModel(s.openrouterModel || "anthropic/claude-haiku-5.5");
       setElevenVoiceId(s.elevenVoiceId || "");
+      setVoiceCatalog(Array.isArray(s.voiceCatalog) ? s.voiceCatalog : []);
       setOpenrouterApiKey("");
       setElevenApiKey("");
       setMcpToken("");
@@ -80,6 +85,8 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
       }
       setInstallToken("");
       setView(res.settings || null);
+      if (res.settings?.voiceCatalog) setVoiceCatalog(res.settings.voiceCatalog);
+      if (res.settings?.elevenVoiceId) setElevenVoiceId(res.settings.elevenVoiceId);
       setMsg("Pronto. Pode falar com a Airy.");
       if (res.settings) onSaved(res.settings);
     } catch (e) {
@@ -87,6 +94,25 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
       setShowManualKeys(true);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const previewVoice = async () => {
+    if (!window.airy?.speak || !elevenVoiceId.trim()) return;
+    setPreviewBusy(true);
+    setMsg(null);
+    try {
+      const { audioBase64 } = await window.airy.speak(
+        "Olá. Assim eu falo com você.",
+        { voiceId: elevenVoiceId.trim() },
+      );
+      const audio = new Audio(`data:audio/mpeg;base64,${audioBase64}`);
+      await audio.play();
+      setMsg("Preview tocado — Salvar para usar esta voz.");
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setPreviewBusy(false);
     }
   };
 
@@ -101,6 +127,7 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
         radarUrl,
         openrouterModel: openrouterModel.trim() || "anthropic/claude-haiku-5.5",
         elevenVoiceId,
+        voiceCatalog,
         inboxEnabled,
         inboxPath: inboxPath.trim(),
         inboxAutoSummarizePdf,
@@ -243,10 +270,47 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
           </label>
         </fieldset>
 
-        <label>
-          ElevenLabs Voice ID
-          <input value={elevenVoiceId} onChange={(e) => setElevenVoiceId(e.target.value)} />
-        </label>
+        <fieldset className="setup-fieldset">
+          <legend>Voz</legend>
+          {voiceCatalog.length > 0 ? (
+            <label>
+              Escolher voz
+              <select
+                value={elevenVoiceId}
+                onChange={(e) => setElevenVoiceId(e.target.value)}
+              >
+                {voiceCatalog.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.label || v.id}
+                  </option>
+                ))}
+                {!voiceCatalog.some((v) => v.id === elevenVoiceId) &&
+                elevenVoiceId ? (
+                  <option value={elevenVoiceId}>Atual ({elevenVoiceId.slice(0, 8)}…)</option>
+                ) : null}
+              </select>
+            </label>
+          ) : (
+            <label>
+              ElevenLabs Voice ID
+              <input
+                value={elevenVoiceId}
+                onChange={(e) => setElevenVoiceId(e.target.value)}
+                placeholder="cole o voice id…"
+              />
+            </label>
+          )}
+          <div className="setup-actions" style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              className="ghost"
+              disabled={previewBusy || busy || !elevenVoiceId.trim()}
+              onClick={() => void previewVoice()}
+            >
+              {previewBusy ? "Tocando…" : "Preview"}
+            </button>
+          </div>
+        </fieldset>
 
         {showManualKeys && (
           <>

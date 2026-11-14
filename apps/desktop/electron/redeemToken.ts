@@ -13,6 +13,7 @@ export type RedeemPayload = {
   }>;
   public?: Partial<{
     elevenVoiceId: string;
+    voiceCatalog: Array<{ id: string; label: string }>;
     openrouterModel: string;
     mcpBaseUrl: string;
     radarUrl: string;

@@ -213,8 +213,16 @@ export function App() {
         return;
       }
       discardRef.current = Boolean(opts?.discard);
-      rec.stop();
-      setCaption(opts?.reason || "Cancelado");
+      setCaption(
+        opts?.reason ||
+          (opts?.discard ? "Cancelado" : "Processando o que ouvi…"),
+      );
+      try {
+        rec.stop();
+      } catch (e) {
+        setError((e as Error).message);
+        goDormant("Falha ao parar o microfone");
+      }
     },
     [goDormant, stopSpeech],
   );
@@ -222,8 +230,6 @@ export function App() {
   const startListening = useCallback(async () => {
     if (!ready) return;
     if (sessionRef.current === "busy") return;
-    // Não alterna escuta→dormir aqui (isso gerava loop com palmas falsas no Mac).
-    // Cancelar: Esc, “para” na fala, ou 2 palmas só quando dormindo não se aplica.
     if (sessionRef.current === "listening") return;
     if (speakingRef.current) return;
 
@@ -251,17 +257,39 @@ export function App() {
     setOrb("listening");
     setCaption(
       needsName
-        ? "Diga seu nome… (Esc cancela)"
-        : "Ouvindo… Esc ou “para” para dormir",
+        ? "Diga seu nome… Espaço envia · Esc cancela"
+        : "Ouvindo… Espaço envia · Esc cancela",
     );
 
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const rec = new MediaRecorder(stream, { mimeType: pickMime() });
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+      setError((e as Error).message);
+      goDormant("Sem microfone — permita o mic nas configurações do Windows");
+      return;
+    }
+
+    const mime = pickMime();
+    let rec: MediaRecorder;
+    try {
+      rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    } catch (e) {
+      stream.getTracks().forEach((t) => t.stop());
+      setError((e as Error).message);
+      goDormant("Gravação de áudio indisponível neste PC");
+      return;
+    }
     chunksRef.current = [];
     mediaRef.current = rec;
 
     rec.ondataavailable = (ev) => {
       if (ev.data.size) chunksRef.current.push(ev.data);
+    };
+
+    rec.onerror = () => {
+      setError("Erro no gravador de áudio");
+      goDormant("Falha no microfone · tente de novo");
     };
 
     rec.onstop = async () => {
@@ -276,74 +304,92 @@ export function App() {
         goDormant(DORMANT_CAPTION);
         return;
       }
-      const blob = new Blob(chunksRef.current, { type: rec.mimeType });
-      if (blob.size < 800) {
-        if (!enrolling && !listenRetryRef.current) {
-          listenRetryRef.current = true;
-          // libera o guard de re-entrada (ainda estávamos em "listening")
-          sessionRef.current = "dormant";
-          setSession("dormant");
-          setCaption("Ainda ouvindo… pode falar");
-          void startListeningRef.current();
+      try {
+        const blob = new Blob(chunksRef.current, {
+          type: rec.mimeType || "audio/webm",
+        });
+        if (blob.size < 800) {
+          if (!enrolling && !listenRetryRef.current) {
+            listenRetryRef.current = true;
+            sessionRef.current = "dormant";
+            setSession("dormant");
+            setCaption("Ainda ouvindo… pode falar");
+            void startListeningRef.current();
+            return;
+          }
+          listenRetryRef.current = false;
+          goDormant(
+            enrolling
+              ? "Não ouvi o nome · chame Airy de novo"
+              : "Não ouvi nada · diga “Airy …” ou Espaço",
+          );
           return;
         }
         listenRetryRef.current = false;
-        goDormant(
-          enrolling
-            ? "Não ouvi o nome · chame Airy de novo"
-            : "Não ouvi nada · diga “Airy …” ou Espaço",
-        );
-        return;
-      }
-      listenRetryRef.current = false;
-      const buf = await blob.arrayBuffer();
-      const b64 = bufferToBase64(buf);
-      const ext = rec.mimeType.includes("ogg") ? "ogg" : "webm";
+        const buf = await blob.arrayBuffer();
+        const b64 = bufferToBase64(buf);
+        const ext = (rec.mimeType || "").includes("ogg") ? "ogg" : "webm";
 
-      if (enrolling && window.airy?.enrollName) {
-        setSession("busy");
-        setOrb("thinking");
-        setCaption("Anotando seu nome…");
-        try {
-          const res = await window.airy.enrollName(b64, `audio.${ext}`);
-          if (res.settings) setSettings(res.settings);
-          setTurn({
-            userText: res.userText,
-            assistantText: res.assistantText,
-            toolTrace: res.ok ? ["enroll_name"] : ["enroll_name_retry"],
-          });
-          setCaption(res.assistantText);
-          await playAudio(res.audioBase64);
-          if (res.ok) {
-            goDormant(DORMANT_CAPTION);
-          } else {
-            // tenta de novo na próxima palmada
-            goDormant("Dormindo · 2 palmas para repetir o nome");
+        if (enrolling && window.airy?.enrollName) {
+          setSession("busy");
+          setOrb("thinking");
+          setCaption("Anotando seu nome…");
+          try {
+            const res = await window.airy.enrollName(b64, `audio.${ext}`);
+            if (res.settings) setSettings(res.settings);
+            setTurn({
+              userText: res.userText,
+              assistantText: res.assistantText,
+              toolTrace: res.ok ? ["enroll_name"] : ["enroll_name_retry"],
+            });
+            setCaption(res.assistantText);
+            await playAudio(res.audioBase64);
+            if (res.ok) {
+              goDormant(DORMANT_CAPTION);
+            } else {
+              goDormant("Dormindo · 2 palmas para repetir o nome");
+            }
+          } catch (e) {
+            setError((e as Error).message);
+            goDormant("Falha ao gravar nome · tente de novo");
           }
-        } catch (e) {
-          setError((e as Error).message);
-          goDormant("Falha ao gravar nome · tente de novo");
+          return;
         }
-        return;
-      }
 
-      await runTurn(() => window.airy!.voiceTurn(b64, `audio.${ext}`));
+        await runTurn(() => window.airy!.voiceTurn(b64, `audio.${ext}`));
+      } catch (e) {
+        setError((e as Error).message);
+        goDormant("Falha ao processar áudio · tente de novo");
+      }
     };
 
-    rec.start();
+    try {
+      rec.start(250);
+    } catch (e) {
+      stream.getTracks().forEach((t) => t.stop());
+      mediaRef.current = null;
+      setError((e as Error).message);
+      goDormant("Não consegui iniciar a gravação");
+      return;
+    }
     setLevel(0.25);
 
     const ctx = new AudioContext();
+    try {
+      if (ctx.state === "suspended") await ctx.resume();
+    } catch {
+      /* segue com timeout */
+    }
     const source = ctx.createMediaStreamSource(stream);
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 1024;
     source.connect(analyser);
     const data = new Uint8Array(analyser.fftSize);
-    // Escuta paciente: pausa pra pensar não encerra a sessão
-    const MIN_MS = 3500;
-    const SILENCE_MS = 5200;
-    const MAX_MS = 32000;
-    const SPEECH_THRESH = 0.055;
+    // Mais curto no instalado: AudioContext às vezes falha em detectar silêncio
+    const MIN_MS = 1200;
+    const SILENCE_MS = 1600;
+    const MAX_MS = 16000;
+    const SPEECH_THRESH = 0.03;
     const started = performance.now();
     let heardSpeech = false;
     let silentFor = 0;
@@ -351,7 +397,11 @@ export function App() {
 
     const watch = () => {
       if (sessionRef.current !== "listening" || mediaRef.current !== rec) {
-        source.disconnect();
+        try {
+          source.disconnect();
+        } catch {
+          /* ok */
+        }
         void ctx.close();
         return;
       }
@@ -373,12 +423,25 @@ export function App() {
       } else if (heardSpeech && elapsed >= MIN_MS) {
         silentFor += dt;
       }
-      const silenceDone = heardSpeech && silentFor > SILENCE_MS && elapsed >= MIN_MS;
+      const silenceDone =
+        heardSpeech && silentFor > SILENCE_MS && elapsed >= MIN_MS;
       const timedOut = elapsed > MAX_MS;
       if (silenceDone || timedOut) {
-        source.disconnect();
+        try {
+          source.disconnect();
+        } catch {
+          /* ok */
+        }
         void ctx.close();
-        if (mediaRef.current === rec && rec.state !== "inactive") rec.stop();
+        if (mediaRef.current === rec && rec.state !== "inactive") {
+          setCaption(timedOut ? "Tempo esgotado — processando…" : "Processando…");
+          try {
+            rec.stop();
+          } catch (e) {
+            setError((e as Error).message);
+            goDormant("Falha ao parar o microfone");
+          }
+        }
         return;
       }
       requestAnimationFrame(watch);
@@ -522,12 +585,16 @@ export function App() {
       if (e.code !== "Space" || e.repeat) return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
-      // Espaço só acorda; se já estiver ouvindo/ocupada, ignora (não dorme)
-      if (sessionRef.current !== "dormant") {
-        e.preventDefault();
+      e.preventDefault();
+      // Espaço = push-to-talk: dormindo → ouve; ouvindo → envia
+      if (sessionRef.current === "listening") {
+        stopListeningRef.current({
+          discard: false,
+          reason: "Processando o que ouvi…",
+        });
         return;
       }
-      e.preventDefault();
+      if (sessionRef.current !== "dormant") return;
       listenRetryRef.current = false;
       void startListeningRef.current();
     };
@@ -566,7 +633,7 @@ export function App() {
         </div>
 
         <div className="hint-bar">
-          “airy …” · anota/lembra · inbox · esc dorme · , ajustes
+          Espaço ouve / Espaço envia · “airy …” · esc cancela · , ajustes
         </div>
       </div>
 
@@ -615,10 +682,13 @@ function pickMime(): string {
   if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
     return "audio/webm;codecs=opus";
   }
+  if (MediaRecorder.isTypeSupported("audio/webm")) {
+    return "audio/webm";
+  }
   if (MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")) {
     return "audio/ogg;codecs=opus";
   }
-  return "audio/webm";
+  return "";
 }
 
 function bufferToBase64(buf: ArrayBuffer): string {

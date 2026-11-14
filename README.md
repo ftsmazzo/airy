@@ -2,16 +2,26 @@
 
 Assistente de voz em português: escuta, responde e age com você — orbe vivo, wake por palmas e atalhos do dia a dia.
 
-**Instalação no Mac:** [`INSTALL-MAC.md`](./INSTALL-MAC.md)
+**Instalação:** [Mac](./install/mac/README.md) · [Windows](./install/win/README.md) · legado Mac: [`INSTALL-MAC.md`](./INSTALL-MAC.md)
+
+Documentação de produto: [`docs/`](./docs/) (PRD → Plano).
 
 ## One-liner (Mac)
 
 ```bash
 git clone https://github.com/ftsmazzo/airy.git
 cd airy
-chmod +x scripts/setup-mac.sh && ./scripts/setup-mac.sh
+chmod +x install/mac/setup.sh && ./install/mac/setup.sh
 # npm run doctor && npm run smoke:accept && npm run dev
-# No app: tecla , → colar keys (cofre do SO). .env é opcional.
+# No app: token de instalação ou tecla , → keys (cofre do SO). .env é opcional.
+```
+
+## One-liner (Windows)
+
+```powershell
+git clone https://github.com/ftsmazzo/airy.git
+cd airy
+.\install\win\setup.ps1
 ```
 
 ## Pré-requisitos

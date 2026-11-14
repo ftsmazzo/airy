@@ -42,6 +42,17 @@ const APP_ALLOWLIST: Record<
   notes: { mac: "Notes" },
   calendar: { mac: "Calendar" },
   mail: { mac: "Mail" },
+  canva: { mac: "Canva", win: ["canva"], web: "https://www.canva.com" },
+  obs: {
+    mac: "OBS",
+    win: ["obs64", "obs32"],
+    winExe: "obs64.exe",
+  },
+  capcut: {
+    mac: "CapCut",
+    win: ["CapCut"],
+    web: "https://www.capcut.com",
+  },
 };
 
 function allowlisted(url: string, radarUrl: string): boolean {
@@ -56,6 +67,7 @@ function allowlisted(url: string, radarUrl: string): boolean {
     "www.youtube.com",
     "youtube.com",
     "youtu.be",
+    "m.youtube.com",
     "open.spotify.com",
     "spotify.com",
     "g1.globo.com",
@@ -65,7 +77,33 @@ function allowlisted(url: string, radarUrl: string): boolean {
     "web.whatsapp.com",
     "app.slack.com",
     "www.notion.so",
+    "notion.so",
     "discord.com",
+    "chatgpt.com",
+    "chat.openai.com",
+    "claude.ai",
+    "www.claude.ai",
+    "perplexity.ai",
+    "www.perplexity.ai",
+    "www.google.com",
+    "google.com",
+    "gemini.google.com",
+    "www.pinterest.com",
+    "pinterest.com",
+    "br.pinterest.com",
+    "www.linkedin.com",
+    "linkedin.com",
+    "www.canva.com",
+    "canva.com",
+    "www.capcut.com",
+    "capcut.com",
+    "www.lovable.dev",
+    "lovable.dev",
+    "www.manus.im",
+    "manus.im",
+    "cnn.com",
+    "www.cnn.com",
+    "edition.cnn.com",
   ]);
   try {
     if (radarUrl) allowedHosts.add(new URL(radarUrl).host);
@@ -142,6 +180,7 @@ export async function openNamedApp(appName: string): Promise<string> {
     visualstudiocode: "vscode",
     explorador: "explorer",
     arquivos: "finder",
+    obsstudio: "obs",
   };
   const canon = aliases[key] || key;
   const spec = APP_ALLOWLIST[canon];
@@ -207,7 +246,7 @@ export const DESKTOP_TOOL_DEFS = [
     function: {
       name: "open_url",
       description:
-        "Abre uma URL http(s) se estiver na allowlist (YouTube, Spotify, Radar, G1, etc.).",
+        "Abre uma URL http(s) se estiver na allowlist (ChatGPT, Claude, Google, Gemini, Perplexity, Notion, Canva, LinkedIn, Pinterest, YouTube, Spotify, Radar, G1, CNN, etc.).",
       parameters: {
         type: "object",
         properties: {
@@ -223,7 +262,7 @@ export const DESKTOP_TOOL_DEFS = [
     function: {
       name: "open_app",
       description:
-        "Abre um aplicativo instalado da allowlist (chrome, spotify, slack, notion, whatsapp, telegram, discord, vscode, cursor, safari, edge, finder/explorer, terminal, notes, mail, calendar).",
+        "Abre um aplicativo instalado da allowlist (chrome, spotify, slack, notion, whatsapp, telegram, discord, vscode, cursor, canva, capcut, obs, safari, edge, finder/explorer, terminal, notes, mail, calendar).",
       parameters: {
         type: "object",
         properties: {

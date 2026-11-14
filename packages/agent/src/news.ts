@@ -46,6 +46,21 @@ function parseRssItems(xml: string, source: string, limit: number): NewsItem[] {
   return items;
 }
 
+/** Atalhos de canal → URL (abrir no browser via open_url). */
+export const CHANNEL_LIVE_URLS: Record<string, string> = {
+  cnn: "https://www.youtube.com/results?search_query=CNN+Brasil+ao+vivo",
+  "cnn brasil": "https://www.youtube.com/results?search_query=CNN+Brasil+ao+vivo",
+  globonews: "https://www.youtube.com/results?search_query=GloboNews+ao+vivo",
+};
+
+export function resolveChannelLiveUrl(query: string): string | null {
+  const q = (query || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  for (const [key, url] of Object.entries(CHANNEL_LIVE_URLS)) {
+    if (q.includes(key)) return url;
+  }
+  return null;
+}
+
 export function resolveFeedKey(query: string): string {
   const q = (query || "").toLowerCase();
   if (q.includes("polit")) return "g1-politica";
@@ -105,6 +120,25 @@ export const NEWS_TOOL_DEFS = [
           },
           limit: { type: "number", description: "Quantidade 1–5 (default 3)" },
         },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "open_channel_live",
+      description:
+        "Abre transmissão ao vivo de um canal de notícias no YouTube (ex.: CNN, GloboNews). Use quando pedirem para abrir/assistir o canal ao vivo.",
+      parameters: {
+        type: "object",
+        properties: {
+          channel: {
+            type: "string",
+            description: "Nome do canal, ex.: CNN, CNN Brasil, GloboNews",
+          },
+        },
+        required: ["channel"],
         additionalProperties: false,
       },
     },

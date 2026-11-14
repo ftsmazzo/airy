@@ -16,6 +16,12 @@ contextBridge.exposeInMainWorld("airy", {
       error?: string;
       settings?: Record<string, unknown>;
     }>,
+  redeemToken: (token: string) =>
+    ipcRenderer.invoke("airy:redeem-token", token) as Promise<{
+      ok: boolean;
+      error?: string;
+      settings?: Record<string, unknown>;
+    }>,
   textTurn: (text: string) =>
     ipcRenderer.invoke("airy:text-turn", text) as Promise<{
       userText: string;

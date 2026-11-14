@@ -388,3 +388,17 @@ body,
   color: #5a6d82;
   word-break: break-all;
 }
+
+.setup-linkish {
+  display: block;
+  margin-top: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--cyan);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}

@@ -8,7 +8,11 @@ import {
   openYoutube,
   type DesktopConfig,
 } from "./desktop.js";
-import { fetchNewsHeadlines, NEWS_TOOL_DEFS } from "./news.js";
+import {
+  fetchNewsHeadlines,
+  NEWS_TOOL_DEFS,
+  resolveChannelLiveUrl,
+} from "./news.js";
 import { ARTIFACT_TOOL_DEFS, createHtmlArtifact } from "./artifacts.js";
 import { openPdf, PDF_TOOL_DEFS, summarizePdf } from "./pdf.js";
 import { RESEARCH_TOOL_DEFS, researchWeb } from "./research.js";
@@ -57,6 +61,7 @@ const LOCAL_TOOL_NAMES = new Set([
   "open_app",
   "open_pdf",
   "read_news",
+  "open_channel_live",
   "research_web",
   "create_html_artifact",
   "summarize_pdf",
@@ -83,6 +88,7 @@ function confirmFromTools(trace: string[], results: string[]): string {
     const last = results[results.length - 1] || "";
     return last.slice(0, 180) || "Peguei as manchetes.";
   }
+  if (trace.includes("open_channel_live")) return "Canal ao vivo aberto.";
   if (trace.includes("create_html_artifact")) return "Relatório HTML aberto.";
   if (trace.includes("open_pdf")) return "PDF aberto.";
   if (trace.includes("save_note")) return "Anotei.";
@@ -249,6 +255,14 @@ export class AiryAgent {
           Number(args.limit) || 3,
         );
         return news.forModel;
+      }
+      case "open_channel_live": {
+        const channel = String(args.channel || "");
+        const live = resolveChannelLiveUrl(channel);
+        if (!live) {
+          return `Canal não mapeado: ${channel}. Tente CNN ou GloboNews.`;
+        }
+        return openAllowedUrl(live, this.desktop);
       }
       case "research_web":
         return researchWeb(String(args.query || ""), {

@@ -33,6 +33,7 @@ import {
   startInboxWatch,
   stopInboxWatch,
 } from "./inboxWatch.js";
+import { redeemInstallToken } from "./redeemToken.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -251,6 +252,28 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("airy:settings-get", async () => settingsPublicView(loadSettings()));
+
+  ipcMain.handle("airy:redeem-token", async (_evt, token: string) => {
+    try {
+      const result = await redeemInstallToken(String(token || ""));
+      if (!result.ok) return { ok: false, error: result.error };
+      saveSettings(result.partial);
+      resetAgent();
+      try {
+        await getAgent();
+      } catch (e) {
+        return {
+          ok: false,
+          error: `Token ok, mas agent falhou: ${(e as Error).message}`,
+          settings: settingsPublicView(loadSettings()),
+        };
+      }
+      applyInboxWatch();
+      return { ok: true, settings: settingsPublicView(loadSettings()) };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+  });
 
   ipcMain.handle("airy:settings-save", async (_evt, partial: Partial<SettingsForm>) => {
     try {

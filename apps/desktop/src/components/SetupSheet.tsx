@@ -10,6 +10,8 @@ type Props = {
 
 export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
   const [ownerName, setOwnerName] = useState("");
+  const [assistantName, setAssistantName] = useState("Airy");
+  const [installToken, setInstallToken] = useState("");
   const [radarUrl, setRadarUrl] = useState("");
   const [openrouterModel, setOpenrouterModel] = useState(
     "anthropic/claude-haiku-5.5",
@@ -21,6 +23,7 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
   const [inboxEnabled, setInboxEnabled] = useState(true);
   const [inboxPath, setInboxPath] = useState("");
   const [inboxAutoSummarizePdf, setInboxAutoSummarizePdf] = useState(false);
+  const [showManualKeys, setShowManualKeys] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [view, setView] = useState<AirySettingsView | null>(initial || null);
@@ -32,12 +35,14 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
       if (!s) return;
       setView(s);
       setOwnerName(s.ownerName || "");
+      setAssistantName(s.assistantName || "Airy");
       setRadarUrl(s.radarUrl || "");
       setOpenrouterModel(s.openrouterModel || "anthropic/claude-haiku-5.5");
       setElevenVoiceId(s.elevenVoiceId || "");
       setOpenrouterApiKey("");
       setElevenApiKey("");
       setMcpToken("");
+      setInstallToken("");
       setInboxEnabled(s.inboxEnabled !== false);
       const fallback =
         s.inboxPath ||
@@ -45,6 +50,7 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
         "";
       setInboxPath(fallback);
       setInboxAutoSummarizePdf(Boolean(s.inboxAutoSummarizePdf));
+      setShowManualKeys(!s.configured);
       setMsg(
         s.encryption
           ? "Keys ficam no cofre do Mac/Windows (não no Git)."
@@ -58,6 +64,32 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
     if (res?.ok) setInboxPath(res.path);
   };
 
+  const activateToken = async () => {
+    if (!window.airy?.redeemToken) {
+      setMsg("Atualize o app — redeem indisponível.");
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await window.airy.redeemToken(installToken.trim());
+      if (!res.ok) {
+        setMsg(res.error || "Token recusado");
+        setShowManualKeys(true);
+        return;
+      }
+      setInstallToken("");
+      setView(res.settings || null);
+      setMsg("Pronto. Pode falar com a Airy.");
+      if (res.settings) onSaved(res.settings);
+    } catch (e) {
+      setMsg((e as Error).message);
+      setShowManualKeys(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const save = async () => {
     if (!window.airy?.saveSettings) return;
     setBusy(true);
@@ -65,6 +97,7 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
     try {
       const payload: Record<string, unknown> = {
         ownerName,
+        assistantName: assistantName.trim() || "Airy",
         radarUrl,
         openrouterModel: openrouterModel.trim() || "anthropic/claude-haiku-5.5",
         elevenVoiceId,
@@ -93,17 +126,61 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
 
   if (!open) return null;
 
+  const needsCreds = !view?.configured;
+
   return (
-    <div className="setup-backdrop" onClick={onClose}>
+    <div className="setup-backdrop" onClick={needsCreds ? undefined : onClose}>
       <div className="setup-sheet" onClick={(e) => e.stopPropagation()}>
-        <h2>Ajustes Airy</h2>
+        <h2>{needsCreds ? "Começar com a Airy" : "Ajustes Airy"}</h2>
         <p className="setup-lead">
-          Assistente pessoal neste PC. Segredos no Keychain/DPAPI. MCP continua
-          disponível quando você pedir dados públicos.
+          {needsCreds
+            ? "Cole o token de instalação que você recebeu. Segredos ficam no cofre deste PC."
+            : "Assistente neste PC. Segredos no Keychain/DPAPI."}
         </p>
 
+        <fieldset className="setup-fieldset">
+          <legend>Token de instalação</legend>
+          <label>
+            Token
+            <input
+              type="password"
+              autoComplete="off"
+              value={installToken}
+              onChange={(e) => setInstallToken(e.target.value)}
+              placeholder="Cole aqui o token…"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && installToken.trim()) void activateToken();
+              }}
+            />
+          </label>
+          <div className="setup-actions" style={{ marginTop: 0 }}>
+            <button
+              type="button"
+              disabled={busy || !installToken.trim()}
+              onClick={() => void activateToken()}
+            >
+              {busy ? "Ativando…" : "Ativar"}
+            </button>
+          </div>
+          <button
+            type="button"
+            className="setup-linkish"
+            onClick={() => setShowManualKeys((v) => !v)}
+          >
+            {showManualKeys ? "Ocultar chaves manuais" : "Prefiro colar as chaves"}
+          </button>
+        </fieldset>
+
         <label>
-          Seu nome (editável — ou deixe vazio p/ ela perguntar na 1ª vez)
+          Nome da IA
+          <input
+            value={assistantName}
+            onChange={(e) => setAssistantName(e.target.value)}
+            placeholder="Airy"
+          />
+        </label>
+        <label>
+          Seu nome (como a IA te chama)
           <input
             value={ownerName}
             onChange={(e) => setOwnerName(e.target.value)}
@@ -111,7 +188,7 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
           />
         </label>
         <label>
-          URL Radar Municipal
+          URL do Radar / atalho principal
           <input value={radarUrl} onChange={(e) => setRadarUrl(e.target.value)} />
         </label>
         <label>
@@ -170,44 +247,52 @@ export function SetupSheet({ open, initial, onClose, onSaved }: Props) {
           ElevenLabs Voice ID
           <input value={elevenVoiceId} onChange={(e) => setElevenVoiceId(e.target.value)} />
         </label>
-        <label>
-          OpenRouter API Key {view?.hasOpenrouterApiKey ? "(já salva — cole de novo se der 401)" : ""}
-          <input
-            type="password"
-            autoComplete="off"
-            value={openrouterApiKey}
-            onChange={(e) => setOpenrouterApiKey(e.target.value)}
-            placeholder={view?.hasOpenrouterApiKey ? "sk-or-v1-…" : "sk-or-v1-…"}
-          />
-        </label>
-        <label>
-          ElevenLabs API Key {view?.hasElevenApiKey ? "(já salva)" : ""}
-          <input
-            type="password"
-            autoComplete="off"
-            value={elevenApiKey}
-            onChange={(e) => setElevenApiKey(e.target.value)}
-            placeholder={view?.hasElevenApiKey ? "••••••••" : ""}
-          />
-        </label>
-        <label>
-          MCP Token {view?.hasMcpToken ? "(já salvo)" : ""}
-          <input
-            type="password"
-            autoComplete="off"
-            value={mcpToken}
-            onChange={(e) => setMcpToken(e.target.value)}
-            placeholder={view?.hasMcpToken ? "••••••••" : ""}
-          />
-        </label>
+
+        {showManualKeys && (
+          <>
+            <label>
+              OpenRouter API Key{" "}
+              {view?.hasOpenrouterApiKey ? "(já salva — cole de novo se der 401)" : ""}
+              <input
+                type="password"
+                autoComplete="off"
+                value={openrouterApiKey}
+                onChange={(e) => setOpenrouterApiKey(e.target.value)}
+                placeholder={view?.hasOpenrouterApiKey ? "sk-or-v1-…" : "sk-or-v1-…"}
+              />
+            </label>
+            <label>
+              ElevenLabs API Key {view?.hasElevenApiKey ? "(já salva)" : ""}
+              <input
+                type="password"
+                autoComplete="off"
+                value={elevenApiKey}
+                onChange={(e) => setElevenApiKey(e.target.value)}
+                placeholder={view?.hasElevenApiKey ? "••••••••" : ""}
+              />
+            </label>
+            <label>
+              MCP Token {view?.hasMcpToken ? "(já salvo)" : ""}
+              <input
+                type="password"
+                autoComplete="off"
+                value={mcpToken}
+                onChange={(e) => setMcpToken(e.target.value)}
+                placeholder={view?.hasMcpToken ? "••••••••" : ""}
+              />
+            </label>
+          </>
+        )}
 
         {msg ? <p className="setup-msg">{msg}</p> : null}
         {view?.path ? <p className="setup-path">{view.path}</p> : null}
 
         <div className="setup-actions">
-          <button type="button" className="ghost" onClick={onClose}>
-            Fechar
-          </button>
+          {!needsCreds && (
+            <button type="button" className="ghost" onClick={onClose}>
+              Fechar
+            </button>
+          )}
           <button type="button" disabled={busy} onClick={() => void save()}>
             {busy ? "Salvando…" : "Salvar"}
           </button>

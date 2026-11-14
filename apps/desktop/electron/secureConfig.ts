@@ -12,6 +12,8 @@ import type { AiryEnv } from "@airy/agent";
 
 export type PublicSettings = {
   ownerName: string;
+  /** Nome pelo qual a IA se apresenta */
+  assistantName: string;
   radarUrl: string;
   openrouterModel: string;
   elevenVoiceId: string;
@@ -49,6 +51,7 @@ const SECRET_KEYS: (keyof SecretSettings)[] = [
 
 const DEFAULT_PUBLIC: PublicSettings = {
   ownerName: "",
+  assistantName: "Airy",
   radarUrl: "",
   openrouterModel: "anthropic/claude-haiku-5.5",
   elevenVoiceId: "",
@@ -157,6 +160,7 @@ export function saveSettings(partial: Partial<SettingsForm>): SettingsForm {
 
   const pub: PublicSettings = {
     ownerName: next.ownerName,
+    assistantName: next.assistantName || DEFAULT_PUBLIC.assistantName,
     radarUrl: next.radarUrl,
     openrouterModel: next.openrouterModel,
     elevenVoiceId: next.elevenVoiceId,
@@ -246,6 +250,7 @@ export function settingsPublicView(s: SettingsForm) {
   return {
     ...status,
     ownerName: s.ownerName,
+    assistantName: s.assistantName || "Airy",
     radarUrl: s.radarUrl,
     openrouterModel: s.openrouterModel,
     elevenVoiceId: s.elevenVoiceId,

@@ -13,6 +13,7 @@ export type AirySettingsView = {
   encryption: boolean;
   path: string;
   ownerName: string;
+  assistantName: string;
   radarUrl: string;
   openrouterModel: string;
   elevenVoiceId: string;
@@ -40,6 +41,11 @@ export type AiryApi = {
   }>;
   getSettings: () => Promise<AirySettingsView>;
   saveSettings: (partial: Record<string, unknown>) => Promise<{
+    ok: boolean;
+    error?: string;
+    settings?: AirySettingsView;
+  }>;
+  redeemToken: (token: string) => Promise<{
     ok: boolean;
     error?: string;
     settings?: AirySettingsView;

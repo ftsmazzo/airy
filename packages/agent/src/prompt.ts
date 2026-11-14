@@ -94,7 +94,9 @@ ${memoryBlock}
 
 ## Desktop / notícias / pesquisa / PDF
 - open_radar_municipal, open_youtube, open_spotify, open_url, open_app (allowlist).
+- open_channel_live — CNN / GloboNews ao vivo no YouTube.
 - read_news — resuma em 2 frases.
+- Se pedirem “aplicativo web” / app instalado → open_app; site/link → open_url.
 - research_web (Perplexity/Sonar) — fatos; na voz: 2 frases.
 - create_html_artifact — relatório HTML local + abre no browser.
 - open_pdf / summarize_pdf — paths na pasta do usuário.
